@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flow — MRS Inward &amp; Issuance Console</title>
+<title>Flow — Inward, Issuance &amp; S2S Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -22,6 +22,8 @@
     --teal-dim:#0E2E2A;
     --amber:#F5A93F;
     --amber-dim:#3A2A10;
+    --indigo:#7C93F5;
+    --indigo-dim:#1C2340;
     --red:#E5636B;
     --red-dim:#3A1E21;
     --radius:10px;
@@ -44,11 +46,23 @@
   }
   body[data-mode="inward"]{ --accent:var(--teal); --accent-dim:var(--teal-dim); }
   body[data-mode="issuance"]{ --accent:var(--amber); --accent-dim:var(--amber-dim); }
+  body[data-mode="s2s"]{ --accent:var(--indigo); --accent-dim:var(--indigo-dim); }
 
   .app{ max-width:1320px; margin:0 auto; padding:0 24px 80px; }
 
-  /* ---------- Topbar & signature flow strip ---------- */
-  header.topbar{ padding:28px 0 0; }
+  /* ---------- Hero / title banner ---------- */
+  .hero{
+    position:relative; margin-top:24px; overflow:hidden;
+    border:1px solid var(--border); border-radius:16px;
+    padding:34px 32px 26px;
+    background:
+      radial-gradient(700px 260px at 8% -20%, rgba(43,223,192,0.12), transparent 60%),
+      radial-gradient(600px 240px at 92% -10%, rgba(245,169,63,0.10), transparent 60%),
+      radial-gradient(500px 220px at 60% 120%, rgba(124,147,245,0.10), transparent 60%),
+      var(--bg-panel);
+  }
+  .hero-network{ position:absolute; inset:0; width:100%; height:100%; opacity:.55; }
+  .hero-inner{ position:relative; z-index:1; }
   .brandrow{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .brand{ display:flex; align-items:center; gap:12px; }
   .brand .mark{
@@ -63,30 +77,40 @@
   .brand .tag{ font-family:var(--mono); font-size:11px; color:var(--text-dim); letter-spacing:.04em; }
   .modepill{
     font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
-    color:var(--accent); border:1px solid var(--border); background:var(--bg-panel);
+    color:var(--accent); border:1px solid var(--border); background:var(--bg-panel-raised);
     padding:6px 12px; border-radius:100px; display:flex; align-items:center; gap:8px;
+    transition:color .2s ease;
   }
   .modepill .dot{ width:6px;height:6px;border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
 
-  .flowstrip{
-    margin-top:20px; height:26px; position:relative; overflow:hidden;
-    border-top:1px solid var(--border-soft); border-bottom:1px solid var(--border-soft);
-  }
-  .flowstrip::before{
+  .hero-title{ font-family:var(--display); font-size:28px; font-weight:600; margin:26px 0 8px; letter-spacing:-0.01em; max-width:560px; }
+  .hero-sub{ margin:0; color:var(--text-muted); font-size:13.5px; line-height:1.6; max-width:480px; }
+  .hero-legend{ display:flex; gap:18px; margin-top:18px; flex-wrap:wrap; }
+  .hero-legend span.item{ display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; color:var(--text-muted); letter-spacing:.03em; }
+  .legend-dot{ width:8px;height:8px;border-radius:50%; }
+  .legend-dot.teal{ background:var(--teal); box-shadow:0 0 8px var(--teal); }
+  .legend-dot.amber{ background:var(--amber); box-shadow:0 0 8px var(--amber); }
+  .legend-dot.indigo{ background:var(--indigo); box-shadow:0 0 8px var(--indigo); }
+
+  .lanes{ position:relative; z-index:1; margin-top:26px; display:flex; flex-direction:column; gap:5px; }
+  .lane{ height:14px; position:relative; overflow:hidden; opacity:.8; }
+  .lane::before{
     content:"› › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › › ";
-    position:absolute; inset:0; white-space:nowrap; letter-spacing:10px;
-    font-family:var(--mono); font-size:13px; color:var(--accent); opacity:.55;
-    line-height:26px; padding-left:0;
-    animation:flowmove 7s linear infinite;
+    position:absolute; inset:0; white-space:nowrap; letter-spacing:9px;
+    font-family:var(--mono); font-size:12px; line-height:14px;
+    animation:flowmove 9s linear infinite;
   }
-  body[data-mode="issuance"] .flowstrip::before{ animation-direction:reverse; }
+  .lane-teal::before{ color:var(--teal); animation-duration:8s; }
+  .lane-amber::before{ color:var(--amber); animation-duration:11s; animation-direction:reverse; }
+  .lane-indigo::before{ color:var(--indigo); animation-duration:9.5s; }
   @keyframes flowmove{ from{ transform:translateX(0);} to{ transform:translateX(-420px);} }
-  @media (prefers-reduced-motion: reduce){ .flowstrip::before{ animation:none; } }
+  @media (prefers-reduced-motion: reduce){ .lane::before{ animation:none; } }
 
   /* ---------- Setup / upload view ---------- */
-  .setup{ padding-top:40px; }
-  .setup-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-  @media (max-width:860px){ .setup-grid{ grid-template-columns:1fr; } }
+  .setup{ padding-top:28px; }
+  .setup-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:960px){ .setup-grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:640px){ .setup-grid{ grid-template-columns:1fr; } }
 
   .modecard{
     background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius);
@@ -224,20 +248,64 @@
 <body data-mode="inward">
 <div class="app">
 
-  <header class="topbar">
-    <div class="brandrow">
-      <div class="brand">
-        <div class="mark">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h13M13 6l7 6-7 6" stroke="#08110F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <header class="hero">
+    <svg class="hero-network" viewBox="0 0 1200 260" preserveAspectRatio="none" aria-hidden="true">
+      <g stroke="var(--border)" stroke-width="1" fill="none">
+        <line x1="60" y1="40" x2="230" y2="110"/>
+        <line x1="230" y1="110" x2="420" y2="60"/>
+        <line x1="230" y1="110" x2="360" y2="200"/>
+        <line x1="420" y1="60" x2="600" y2="130"/>
+        <line x1="360" y1="200" x2="600" y2="130"/>
+        <line x1="600" y1="130" x2="800" y2="70"/>
+        <line x1="600" y1="130" x2="770" y2="215"/>
+        <line x1="800" y1="70" x2="980" y2="120"/>
+        <line x1="770" y1="215" x2="980" y2="120"/>
+        <line x1="980" y1="120" x2="1150" y2="55"/>
+        <line x1="980" y1="120" x2="1140" y2="190"/>
+      </g>
+      <g fill="var(--teal)" opacity=".9">
+        <circle cx="230" cy="110" r="3.5"/>
+        <circle cx="600" cy="130" r="3.5"/>
+      </g>
+      <g fill="var(--amber)" opacity=".9">
+        <circle cx="420" cy="60" r="3.5"/>
+        <circle cx="800" cy="70" r="3.5"/>
+        <circle cx="1150" cy="55" r="3.5"/>
+      </g>
+      <g fill="var(--indigo)" opacity=".9">
+        <circle cx="360" cy="200" r="3.5"/>
+        <circle cx="770" cy="215" r="3.5"/>
+        <circle cx="980" cy="120" r="3.5"/>
+        <circle cx="1140" cy="190" r="3.5"/>
+      </g>
+      <circle cx="60" cy="40" r="3" fill="var(--text-dim)"/>
+    </svg>
+    <div class="hero-inner">
+      <div class="brandrow">
+        <div class="brand">
+          <div class="mark">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h13M13 6l7 6-7 6" stroke="#08110F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h1>Flow</h1>
+            <div class="tag">MATERIAL MOVEMENT CONSOLE</div>
+          </div>
         </div>
-        <div>
-          <h1>Flow</h1>
-          <div class="tag">MRS INWARD &amp; ISSUANCE CONSOLE</div>
-        </div>
+        <div class="modepill" id="modeIndicator"><span class="dot"></span><span id="modeIndicatorText">MRS INWARD</span></div>
       </div>
-      <div class="modepill" id="modeIndicator"><span class="dot"></span><span id="modeIndicatorText">MRS INWARD</span></div>
+      <h2 class="hero-title">Every item, every store, every month — in one place.</h2>
+      <p class="hero-sub">Upload a monthly export and drill straight into inward, issuance or store-to-store transfer volumes by item code, substore and month.</p>
+      <div class="hero-legend">
+        <span class="item"><span class="legend-dot teal"></span>MRS Inward</span>
+        <span class="item"><span class="legend-dot amber"></span>Issuance</span>
+        <span class="item"><span class="legend-dot indigo"></span>S2S Transfer</span>
+      </div>
     </div>
-    <div class="flowstrip"></div>
+    <div class="lanes" aria-hidden="true">
+      <div class="lane lane-teal"></div>
+      <div class="lane lane-amber"></div>
+      <div class="lane lane-indigo"></div>
+    </div>
   </header>
 
   <!-- ============ SETUP VIEW ============ -->
@@ -254,6 +322,12 @@
         <div class="k">Option 02</div>
         <h3>Issuance Report</h3>
         <p>Material issued from substores to field engineers — analysed by month, item code and store to give total issuance quantity.</p>
+      </div>
+      <div class="modecard" id="cardS2s" data-mode="s2s">
+        <div class="radio"></div>
+        <div class="k">Option 03</div>
+        <h3>S2S Transfer Report</h3>
+        <p>Store-to-store transfers — pick "Other → SDFX" or "SDFX → Other" and see inward quantity by item, store and month.</p>
       </div>
     </div>
 
@@ -276,7 +350,8 @@
       <ul>
         <li><b>Inward:</b> sums <code>NonSerialised_Inward_Qnty</code> for bulk items, and counts one unit per row for serial-controlled items (each serial number = 1 inward unit).</li>
         <li><b>Issuance:</b> sums <code>Issued_Qty</code>. Use the Allocate / Recover toggle in the dashboard to include or net-off returned material.</li>
-        <li>Only the columns needed for aggregation are read from each row, and each month's sheet is discarded from memory right after it's summarised — so even multi-lakh-row workbooks stay light once parsing gets going.</li>
+        <li><b>S2S Transfer:</b> reads the two sheets in the workbook (one per transfer direction), sums the transfer quantity per row, and works out the month from the date column on each row rather than the sheet name. Use the "Flow" toggle in the dashboard to switch between directions — a workbook's sheets are matched by name/columns automatically, and if a sheet's headers don't look like item code / store / quantity / date, it's skipped and you'll see which one so we can fix the column matching together.</li>
+        <li>Only the columns needed for aggregation are read from each row, and each sheet is discarded from memory right after it's summarised — so even multi-lakh-row workbooks stay light once parsing gets going.</li>
         <li>For a 70–110MB workbook, expect roughly 30 seconds to 2 minutes to open the file before the per-sheet progress starts moving — that first stretch is the spreadsheet engine unpacking the workbook, and it's normal for it to look quiet.</li>
         <li>Everything happens locally in this browser tab; the file is never uploaded anywhere.</li>
       </ul>
@@ -318,6 +393,10 @@
           <button data-v="all">All</button>
           <button data-v="net">Net</button>
         </div>
+      </div>
+      <div class="field hidden" id="flowField">
+        <label>Flow direction</label>
+        <div class="segwrap" id="flowSeg"></div>
       </div>
       <div class="field clearrow">
         <button class="btn ghost small" id="clearFiltersBtn" style="width:100%;">Clear filters</button>
@@ -407,6 +486,27 @@ function numOrZero(v){
   return isNaN(n) ? 0 : n;
 }
 function yieldToUI(){ return new Promise(r=> setTimeout(r, 0)); }
+
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function findCol(headers, includeAll, excludeAny){
+  excludeAny = excludeAny || [];
+  for(let i=0;i<headers.length;i++){
+    const h = headers[i];
+    if(includeAll.every(tok=>h.includes(tok)) && !excludeAny.some(tok=>h.includes(tok))) return i;
+  }
+  return -1;
+}
+function excelToMonthInfo(val){
+  if(val==null || val==='') return null;
+  if(typeof val === 'number'){
+    const dc = XLSX.SSF ? XLSX.SSF.parse_date_code(val) : null;
+    if(!dc || !dc.m) return null;
+    return { order: dc.m-1, label: MONTH_SHORT[dc.m-1] };
+  }
+  const parsed = new Date(val);
+  if(isNaN(parsed.getTime())) return null;
+  return { order: parsed.getMonth(), label: MONTH_SHORT[parsed.getMonth()] };
+}
 
 async function parseWorkbook(buffer, mode, onProgress){
   if(typeof XLSX === 'undefined'){
@@ -541,13 +641,155 @@ async function parseWorkbook(buffer, mode, onProgress){
   };
 }
 
+/* -----------------------------------------------------------------------
+   S2S TRANSFER parser — the workbook has one sheet per transfer direction
+   (e.g. "Other to SDFX" / "SDFX to Other") instead of one sheet per month,
+   and the month is worked out from a date column on each row. Column
+   names aren't known up front, so we match them fuzzily and, if a sheet
+   really can't be matched, surface its actual headers so we can adjust
+   the matching together instead of failing silently.
+   ----------------------------------------------------------------------- */
+async function parseS2S(buffer, onProgress){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('Could not load the spreadsheet engine (need internet access to cdnjs.cloudflare.com).');
+  }
+  onProgress({phase:'opening'});
+  await yieldToUI();
+
+  let workbook;
+  try{
+    workbook = XLSX.read(buffer, {
+      type:'array', raw:true, cellDates:false, dense:true,
+      cellFormula:false, cellHTML:false, cellStyles:false, cellText:false,
+      sheetStubs:false, bookVBA:false
+    });
+  }catch(err){
+    throw new Error('Failed to read the workbook — is it a valid .xlsx file? (' + err.message + ')');
+  }
+
+  const sheetNames = workbook.SheetNames;
+  const agg = new Map();
+  const itemMap = new Map();
+  const storeSet = new Set();
+  const circleSet = new Set();
+  const monthSeen = new Map();
+  const flows = [];
+  let totalRows = 0;
+  let sheetsSkipped = [];
+  let diagnostics = [];
+
+  for(let s=0; s<sheetNames.length; s++){
+    const sheetName = sheetNames[s];
+    onProgress({phase:'reading', sheet:sheetName, sheetIndex:s, sheetTotal:sheetNames.length});
+    await yieldToUI();
+
+    const ws = workbook.Sheets[sheetName];
+    if(!ws || !ws['!ref']){ continue; }
+
+    let aoa;
+    try{
+      aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null, blankrows:false});
+    }catch(err){
+      sheetsSkipped.push(sheetName); delete workbook.Sheets[sheetName]; continue;
+    }
+    if(!aoa || aoa.length < 2){ delete workbook.Sheets[sheetName]; continue; }
+
+    const rawHeaders = aoa[0];
+    const headers = rawHeaders.map(normHeader);
+    const col = (name) => headers.indexOf(name);
+
+    let itemIdx = col('item_code'); if(itemIdx===-1) itemIdx = findCol(headers,['item','code']);
+    let ssIdx = col('ss');
+    if(ssIdx===-1) ssIdx = findCol(headers,['store'],['other']);
+    if(ssIdx===-1) ssIdx = findCol(headers,['substore']);
+    let descIdx = col('item_description'); if(descIdx===-1) descIdx = findCol(headers,['description']);
+    let circleIdx = col('circle'); if(circleIdx===-1) circleIdx = findCol(headers,['circle']);
+    let qtyIdx = -1;
+    ['transfer_qty','transferred_qty','transfer_qnty','received_qty','inward_qty','issued_qty','qty','qnty','quantity'].some(name=>{
+      const i = col(name); if(i>-1){ qtyIdx = i; return true; } return false;
+    });
+    if(qtyIdx===-1) qtyIdx = findCol(headers,['qty']);
+    if(qtyIdx===-1) qtyIdx = findCol(headers,['qnty']);
+    if(qtyIdx===-1) qtyIdx = findCol(headers,['quantity']);
+    let dateIdx = -1;
+    ['transfer_date','txn_date','inward_date','date'].some(name=>{
+      const i = col(name); if(i>-1){ dateIdx = i; return true; } return false;
+    });
+    if(dateIdx===-1) dateIdx = findCol(headers,['date']);
+
+    if(itemIdx===-1 || ssIdx===-1 || qtyIdx===-1 || dateIdx===-1){
+      sheetsSkipped.push(sheetName);
+      diagnostics.push({ sheet:sheetName, headers: rawHeaders.map(h=>String(h==null?'':h).trim()).filter(Boolean) });
+      delete workbook.Sheets[sheetName];
+      continue;
+    }
+
+    flows.push(sheetName);
+    const rowCount = aoa.length - 1;
+    for(let r = 1; r < aoa.length; r++){
+      const row = aoa[r];
+      if(!row) continue;
+      const item = row[itemIdx];
+      const store = row[ssIdx];
+      if(item == null || item === '' || store == null || store === '') continue;
+      const mi = excelToMonthInfo(row[dateIdx]);
+      if(!mi) continue;
+      totalRows++;
+
+      const desc = descIdx > -1 ? row[descIdx] : null;
+      if(desc && !itemMap.has(item)) itemMap.set(item, String(desc));
+      storeSet.add(store);
+      const circle = circleIdx > -1 ? row[circleIdx] : null;
+      if(circle) circleSet.add(circle);
+
+      const qn = numOrZero(row[qtyIdx]);
+      if(qn === 0) continue;
+      monthSeen.set(mi.order + '|' + mi.label, true);
+      const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + sheetName;
+      agg.set(key, (agg.get(key)||0) + qn);
+    }
+
+    onProgress({phase:'done-sheet', sheet:sheetName, sheetIndex:s, sheetTotal:sheetNames.length, rows: rowCount});
+    delete workbook.Sheets[sheetName];
+    await yieldToUI();
+  }
+
+  if(agg.size === 0){
+    let msg = 'Could not find item code / store / quantity / date columns in this S2S workbook.';
+    if(diagnostics.length){
+      msg += ' Headers found in "' + diagnostics[0].sheet + '": ' + diagnostics[0].headers.join(', ') + '. Tell Claude the exact item code / store / quantity / date column names and the matching can be fixed.';
+    }
+    throw new Error(msg);
+  }
+
+  const records = [];
+  for(const [key, val] of agg.entries()){
+    const parts = key.split('|');
+    records.push([parseInt(parts[0],10), parts[1], parts[2], parts[3], parts[4], val, parts[5]]);
+  }
+
+  const months = Array.from(monthSeen.keys()).map(k=>{
+    const [order,label] = k.split('|');
+    return {order:parseInt(order,10), label};
+  }).sort((a,b)=>a.order-b.order);
+
+  return {
+    mode:'s2s', months, records,
+    itemMap: Array.from(itemMap.entries()),
+    stores: Array.from(storeSet.values()),
+    circles: Array.from(circleSet.values()),
+    flows,
+    totalRows, sheetsSkipped
+  };
+}
+
 /* =======================================================================
    STATE
    ======================================================================= */
 const state = {
   mode: 'inward',
   raw: null,           // {mode, months, records, itemMap, stores, circles, totalRows}
-  filters: { months: new Set(), items: new Set(), stores: new Set(), circles: new Set(), txn: 'allocate' },
+  filters: { months: new Set(), items: new Set(), stores: new Set(), circles: new Set(), txn: 'allocate', flow: null },
   sort: { key:'qty', dir:-1 },
   page: 1,
   pageSize: 50,
@@ -559,7 +801,7 @@ const state = {
    DOM refs
    ======================================================================= */
 const $ = (id) => document.getElementById(id);
-const cardInward = $('cardInward'), cardIssuance = $('cardIssuance');
+const cardInward = $('cardInward'), cardIssuance = $('cardIssuance'), cardS2s = $('cardS2s');
 const dropzone = $('dropzone'), fileInput = $('fileInput'), browseBtn = $('browseBtn');
 const dzTitle = $('dzTitle'), dzSub = $('dzSub');
 const fileMeta = $('fileMeta'), progressWrap = $('progressWrap'), progressFill = $('progressFill'), progressLabel = $('progressLabel');
@@ -567,18 +809,27 @@ const errBox = $('errBox');
 const setupView = $('setupView'), dashView = $('dashView');
 const modeIndicatorText = $('modeIndicatorText');
 const txnField = $('txnField');
+const flowField = $('flowField');
 
 function setMode(mode){
   state.mode = mode;
   document.body.setAttribute('data-mode', mode);
   cardInward.classList.toggle('active', mode==='inward');
   cardIssuance.classList.toggle('active', mode==='issuance');
-  modeIndicatorText.textContent = mode==='inward' ? 'MRS INWARD' : 'ISSUANCE';
-  dzTitle.textContent = mode==='inward' ? 'Drop your MRS Inward workbook here' : 'Drop your Issuance workbook here';
+  cardS2s.classList.toggle('active', mode==='s2s');
+  modeIndicatorText.textContent = mode==='inward' ? 'MRS INWARD' : mode==='issuance' ? 'ISSUANCE' : 'S2S TRANSFER';
+  dzTitle.textContent = mode==='inward' ? 'Drop your MRS Inward workbook here'
+    : mode==='issuance' ? 'Drop your Issuance workbook here'
+    : 'Drop your S2S Transfer workbook here';
+  dzSub.textContent = mode==='s2s'
+    ? '.xlsx, one sheet per transfer direction · large files (100MB+) are parsed in the background'
+    : '.xlsx, one sheet per month · large files (100MB+) are parsed in the background';
   txnField.style.display = mode==='issuance' ? '' : 'none';
+  flowField.classList.toggle('hidden', mode!=='s2s');
 }
 cardInward.addEventListener('click', ()=> setMode('inward'));
 cardIssuance.addEventListener('click', ()=> setMode('issuance'));
+cardS2s.addEventListener('click', ()=> setMode('s2s'));
 setMode('inward');
 
 /* ---------- Upload handling ---------- */
@@ -637,7 +888,9 @@ async function handleFile(file){
       reader.readAsArrayBuffer(file);
     });
     progressFill.style.width = '5%';
-    const result = await parseWorkbook(buffer, state.mode, onParseProgress);
+    const result = state.mode === 's2s'
+      ? await parseS2S(buffer, onParseProgress)
+      : await parseWorkbook(buffer, state.mode, onParseProgress);
     clearInterval(openingPulse);
     progressFill.style.width = '100%';
     progressLabel.textContent = 'Done.';
@@ -659,7 +912,10 @@ function showError(msg){
 /* ---------- Once aggregation is done ---------- */
 function onDataReady(data){
   state.raw = data;
-  state.filters = { months: new Set(), items: new Set(), stores: new Set(), circles: new Set(), txn: 'allocate' };
+  state.filters = {
+    months: new Set(), items: new Set(), stores: new Set(), circles: new Set(),
+    txn: 'allocate', flow: (data.flows && data.flows[0]) || null
+  };
   state.page = 1;
 
   $('loadedFileName').textContent = state.fileName;
@@ -673,6 +929,20 @@ function onDataReady(data){
   dashView.classList.remove('hidden');
   document.getElementById('txnSeg').style.display = state.mode==='issuance' ? 'flex' : 'none';
   txnField.style.display = state.mode==='issuance' ? '' : 'none';
+  flowField.classList.toggle('hidden', state.mode!=='s2s');
+  if(state.mode==='s2s'){
+    const flowSeg = $('flowSeg');
+    flowSeg.innerHTML = (data.flows||[]).map((f,i)=> '<button data-v="'+escapeHtml(f)+'" class="'+(i===0?'on':'')+'">'+escapeHtml(f)+'</button>').join('');
+    [...flowSeg.children].forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        [...flowSeg.children].forEach(b=>b.classList.remove('on'));
+        btn.classList.add('on');
+        state.filters.flow = btn.dataset.v;
+        state.page = 1;
+        render();
+      });
+    });
+  }
   render();
 }
 
@@ -787,7 +1057,7 @@ document.getElementById('chartSeg').addEventListener('click', (e)=>{
    Filtering + aggregation for display
    ======================================================================= */
 function qtyOf(rec){
-  if(state.mode === 'inward') return rec[5];
+  if(state.mode === 'inward' || state.mode === 's2s') return rec[5];
   const allocate = rec[5], recover = rec[6];
   if(state.filters.txn === 'allocate') return allocate;
   if(state.filters.txn === 'all') return allocate + recover;
@@ -801,6 +1071,7 @@ function filteredRecords(){
     if(f.items.size && !f.items.has(r[2])) return false;
     if(f.stores.size && !f.stores.has(r[3])) return false;
     if(f.circles.size && !f.circles.has(r[4])) return false;
+    if(state.mode === 's2s' && f.flow && r[6] !== f.flow) return false;
     return true;
   });
 }
