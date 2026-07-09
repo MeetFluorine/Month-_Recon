@@ -354,6 +354,7 @@
         <li>Only the columns needed for aggregation are read from each row, and each sheet is discarded from memory right after it's summarised — so even multi-lakh-row workbooks stay light once parsing gets going.</li>
         <li>For a 70–110MB workbook, expect roughly 30 seconds to 2 minutes to open the file before the per-sheet progress starts moving — that first stretch is the spreadsheet engine unpacking the workbook, and it's normal for it to look quiet.</li>
         <li>Everything happens locally in this browser tab; the file is never uploaded anywhere.</li>
+        <li><b>Detail table:</b> the "Detail — month × item × store" table (bottom of the dashboard) now also shows <b>MO/IR Number</b>, <b>Ordered Qnty</b>, <b>NonSerialised Inward Qnty</b> and <b>Serialised Inward (True/False)</b> for every mode — Inward, Issuance and S2S. These are matched from your workbook's own column names automatically (e.g. "MO/IR Number", "Ordered Qty", "Serial No"); if a workbook genuinely doesn't have one of these columns, that cell just shows "—".</li>
       </ul>
     </div>
   </section>
@@ -437,10 +438,15 @@
           <table class="datatable" id="dataTable">
             <thead><tr>
               <th data-k="month">Month</th>
+              <th data-k="moir">MO/IR Number</th>
+              <th data-k="moStatus">MO Status</th>
               <th data-k="item">Item Code</th>
-              <th class="desc" data-k="desc">Description</th>
+              <th class="desc" data-k="desc">Item Description</th>
               <th data-k="store">Store (SS)</th>
               <th data-k="circle">Circle</th>
+              <th data-k="ordered">Ordered Qnty</th>
+              <th data-k="nonSer">NonSerialised Inward Qnty</th>
+              <th data-k="serial">Serialised Inward</th>
               <th data-k="qty">Qty</th>
             </tr></thead>
             <tbody id="tableBody"></tbody>
@@ -470,6 +476,77 @@
    loop between sheets so the progress bar and page stay responsive.
    ======================================================================= */
 function normHeader(h){ return String(h==null?'':h).trim().toLowerCase().replace(/\s+/g,'_'); }
+/* Loose header matcher — strips ALL punctuation/spaces so "MO/IR Number",
+   "MO - IR No.", "Ordered Qnty" etc all reduce to a plain a-z0-9 string.
+   Used only for the NEW optional columns (MO/IR Number, Ordered Qty,
+   NonSerialised Inward Qty, Serial No) so we don't touch the existing,
+   already-working exact-match lookups (item_code, ss, issued_qty, etc). */
+function normLoose(h){ return String(h==null?'':h).trim().toLowerCase().replace(/[^a-z0-9]/g,''); }
+function buildLooseHeaders(rawHeaders){ return rawHeaders.map(normLoose); }
+function findLooseAny(looseHeaders, targets){
+  for(const t of targets){ const i = looseHeaders.indexOf(t); if(i>-1) return i; }
+  return -1;
+}
+function findLooseContains(looseHeaders, tokens){
+  for(let i=0;i<looseHeaders.length;i++){
+    if(tokens.every(t=>looseHeaders[i].includes(t))) return i;
+  }
+  return -1;
+}
+function findMoIrIdx(looseHeaders){
+  let i = findLooseAny(looseHeaders, [
+    'moirnumber','moirno','moirnum','irmonumber','irmono',
+    'monumber','mono','irnumber','irno','monoirno',
+    'moordernumber','ironumber'
+  ]);
+  if(i>-1) return i;
+  return findLooseContains(looseHeaders, ['mo','ir']);
+}
+function findOrderedQtyIdx(looseHeaders){
+  return findLooseAny(looseHeaders, [
+    'orderedqty','orderedqnty','orderedquantity','orderqty','orderqnty',
+    'orderquantity','moqty','moqnty','moorderqty','irorderqty'
+  ]);
+}
+function findNonSerialIdx(looseHeaders){
+  return findLooseAny(looseHeaders, [
+    'nonserialisedinwardqnty','nonserialisedinwardqty','nonserializedinwardqnty',
+    'nonserializedinwardqty','nonserialqty','nonserialqnty','nonserialisedqty',
+    'nonserialisedqnty','nonserializedqty','nonserializedqnty'
+  ]);
+}
+function findSerialColIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['serialno','serialnumber','serialnos','serialnumbers']);
+}
+// The exact column Shadowfax's reports use to say whether a serial-controlled
+// line has actually been received ("true"/"false" text) — distinct from just
+// having a Serial_No on the row, which can be known before receipt.
+function findSerialisedInwardFlagIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['serialisedinward','serializedinward']);
+}
+function findSerialControlledIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['serialcontrolled','isserialcontrolled','serialcontrol']);
+}
+function findMoStatusIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['mostatus','irstatus','moirstatus','orderstatus']);
+}
+function findOrderDateIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['i360orderdate','orderdate','podate']);
+}
+// Reads a True/False-ish cell (string "true"/"false", boolean, or 1/0).
+// Returns null when the cell doesn't clearly say either way (blank, or a
+// value we don't recognise) so callers can fall back to another signal.
+function parseBoolLike(v){
+  if(v === true) return true;
+  if(v === false) return false;
+  if(typeof v === 'number') return v === 1;
+  if(typeof v === 'string'){
+    const t = v.trim().toLowerCase();
+    if(t === 'true' || t === 'yes' || t === 'y' || t === '1') return true;
+    if(t === 'false' || t === 'no' || t === 'n' || t === '0') return false;
+  }
+  return null;
+}
 const MONTH_INFO = {
   jan:[0,'Jan'],feb:[1,'Feb'],mar:[2,'Mar'],march:[2,'Mar'],apr:[3,'Apr'],april:[3,'Apr'],
   may:[4,'May'],jun:[5,'Jun'],june:[5,'Jun'],jul:[6,'Jul'],july:[6,'Jul'],aug:[7,'Aug'],
@@ -571,6 +648,16 @@ async function parseWorkbook(buffer, mode, onProgress){
       txnIdx = col('txn_type');
     }
 
+    // NEW: extra detail-view columns — best-effort, loosely matched so this
+    // still works even if the workbook doesn't have these exact headers.
+    const looseHeaders = buildLooseHeaders(aoa[0]);
+    const moirIdx = findMoIrIdx(looseHeaders);
+    const orderedIdx = findOrderedQtyIdx(looseHeaders);
+    const nonSerExtraIdx = mode === 'inward' ? qtyIdx : findNonSerialIdx(looseHeaders);
+    const serialExtraIdx = mode === 'inward' ? serialIdx : findSerialColIdx(looseHeaders);
+    const serialisedInwardFlagIdx = findSerialisedInwardFlagIdx(looseHeaders);
+    const moStatusIdx = findMoStatusIdx(looseHeaders);
+
     const mi = monthInfo(sheetName);
     monthSeen.set(mi.order + '|' + mi.label, true);
 
@@ -579,8 +666,13 @@ async function parseWorkbook(buffer, mode, onProgress){
       const row = aoa[r];
       if(!row) continue;
       const item = row[itemIdx];
-      const store = row[ssIdx];
-      if(item == null || item === '' || store == null || store === '') continue;
+      let store = row[ssIdx];
+      // Only the item code is truly required. A pending / not-yet-allocated
+      // MO/IR can legitimately have a blank store — dropping those rows
+      // entirely would hide exactly the "not inwarded yet" lines we want
+      // visible, so we keep them under a placeholder store instead.
+      if(item == null || item === '') continue;
+      if(store == null || store === ''){ store = '(No Store / Pending)'; }
       totalRows++;
 
       const desc = descIdx > -1 ? row[descIdx] : null;
@@ -589,20 +681,46 @@ async function parseWorkbook(buffer, mode, onProgress){
       const circle = circleIdx > -1 ? row[circleIdx] : null;
       if(circle) circleSet.add(circle);
 
+      const moir = moirIdx > -1 ? row[moirIdx] : null;
+      const orderedQn = orderedIdx > -1 ? numOrZero(row[orderedIdx]) : 0;
+      const nonSerQn = nonSerExtraIdx > -1 ? numOrZero(row[nonSerExtraIdx]) : 0;
+      const moStatus = moStatusIdx > -1 ? row[moStatusIdx] : null;
+      // "Serialised Inward" truth: prefer an explicit Serialised_Inward
+      // True/False column when the workbook has one (this correctly shows
+      // False for a serial that's known but not yet actually received).
+      // Only fall back to "a serial number is present on this row" when
+      // there's no explicit flag column to read.
+      const explicitFlag = serialisedInwardFlagIdx > -1 ? parseBoolLike(row[serialisedInwardFlagIdx]) : null;
+      const hasSerial = explicitFlag !== null
+        ? explicitFlag
+        : (serialExtraIdx > -1 && row[serialExtraIdx] != null && row[serialExtraIdx] !== '');
+
       if(mode === 'inward'){
         let qty = qtyIdx > -1 ? row[qtyIdx] : null;
         let qn = numOrZero(qty);
-        if(qn === 0 && serialIdx > -1 && row[serialIdx] != null && row[serialIdx] !== ''){ qn = 1; }
-        if(qn === 0) continue;
-        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'');
-        agg.set(key, (agg.get(key)||0) + qn);
+        if(qn === 0 && hasSerial){ qn = 1; }
+        // NOTE: rows are kept even when qn is 0 (nothing inward yet / MO-IR
+        // cancelled later) so every MO/IR line for the item+store is still
+        // visible in the detail table, with Qty / NonSerialised showing 0
+        // and Serialised showing False.
+        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'');
+        const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
+        cur.qty += qn;
+        cur.ordered += orderedQn;
+        cur.nonSer += nonSerQn;
+        if(hasSerial) cur.serial = true;
+        if(moStatus && !cur.moStatus) cur.moStatus = String(moStatus);
+        agg.set(key, cur);
       } else {
         const qn = numOrZero(qtyIdx > -1 ? row[qtyIdx] : null);
-        if(qn === 0) continue;
         const txnRaw = txnIdx > -1 ? String(row[txnIdx]||'').trim().toLowerCase() : 'allocate';
-        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'');
-        const cur = agg.get(key) || {allocate:0, recover:0};
+        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'');
+        const cur = agg.get(key) || {allocate:0, recover:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
         if(txnRaw === 'recover') cur.recover += qn; else cur.allocate += qn;
+        cur.ordered += orderedQn;
+        cur.nonSer += nonSerQn;
+        if(hasSerial) cur.serial = true;
+        if(moStatus && !cur.moStatus) cur.moStatus = String(moStatus);
         agg.set(key, cur);
       }
     }
@@ -620,10 +738,12 @@ async function parseWorkbook(buffer, mode, onProgress){
     const item = parts[2];
     const store = parts[3];
     const circle = parts[4];
+    const moir = val.moir || '';
+    const moStatus = val.moStatus || '';
     if(mode === 'inward'){
-      records.push([order, label, item, store, circle, val]);
+      records.push([order, label, item, store, circle, val.qty, null, moir, val.ordered, val.nonSer, val.serial, moStatus]);
     } else {
-      records.push([order, label, item, store, circle, val.allocate, val.recover]);
+      records.push([order, label, item, store, circle, val.allocate, val.recover, moir, val.ordered, val.nonSer, val.serial, moStatus]);
     }
   }
 
@@ -717,7 +837,28 @@ async function parseS2S(buffer, onProgress){
     });
     if(dateIdx===-1) dateIdx = findCol(headers,['date']);
 
-    if(itemIdx===-1 || ssIdx===-1 || qtyIdx===-1 || dateIdx===-1){
+    // NEW: extra detail-view columns — best-effort, loosely matched.
+    const looseHeaders = buildLooseHeaders(rawHeaders);
+    const moirIdx = findMoIrIdx(looseHeaders);
+    const orderedIdx = findOrderedQtyIdx(looseHeaders);
+    const nonSerIdx = findNonSerialIdx(looseHeaders);
+    const serialColIdx = findSerialColIdx(looseHeaders);
+    const serialisedInwardFlagIdx = findSerialisedInwardFlagIdx(looseHeaders);
+    const serialControlledIdx = findSerialControlledIdx(looseHeaders);
+    const moStatusIdx = findMoStatusIdx(looseHeaders);
+    // Fallback date: when a row's Inward_Date is blank (nothing received yet
+    // — exactly the "not inwarded" rows we want visible), we still need a
+    // month to place it in, so fall back to the order date.
+    const orderDateIdx = findOrderDateIdx(looseHeaders);
+
+    // A sheet is usable if it has item/store/date AND some way to tell
+    // inward quantity — either the dedicated Inward-schema columns
+    // (NonSerialised_Inward_Qnty / Serialised_Inward) or a generic
+    // transfer-qty-style column as a last resort.
+    const hasQtySignal = qtyIdx > -1 || nonSerIdx > -1 || serialisedInwardFlagIdx > -1;
+    const hasDateSignal = dateIdx > -1 || orderDateIdx > -1;
+
+    if(itemIdx===-1 || ssIdx===-1 || !hasQtySignal || !hasDateSignal){
       sheetsSkipped.push(sheetName);
       diagnostics.push({ sheet:sheetName, headers: rawHeaders.map(h=>String(h==null?'':h).trim()).filter(Boolean) });
       delete workbook.Sheets[sheetName];
@@ -730,9 +871,14 @@ async function parseS2S(buffer, onProgress){
       const row = aoa[r];
       if(!row) continue;
       const item = row[itemIdx];
-      const store = row[ssIdx];
-      if(item == null || item === '' || store == null || store === '') continue;
-      const mi = excelToMonthInfo(row[dateIdx]);
+      let store = row[ssIdx];
+      if(item == null || item === '') continue;
+      if(store == null || store === ''){ store = '(No Store / Pending)'; }
+      // A row with no Inward_Date hasn't been received yet — exactly the
+      // "not inwarded" case we want visible — so fall back to the order
+      // date to still place it in a month instead of dropping it.
+      const mi = (dateIdx > -1 ? excelToMonthInfo(row[dateIdx]) : null)
+        || (orderDateIdx > -1 ? excelToMonthInfo(row[orderDateIdx]) : null);
       if(!mi) continue;
       totalRows++;
 
@@ -741,12 +887,50 @@ async function parseS2S(buffer, onProgress){
       storeSet.add(store);
       const circle = circleIdx > -1 ? row[circleIdx] : null;
       if(circle) circleSet.add(circle);
-
-      const qn = numOrZero(row[qtyIdx]);
-      if(qn === 0) continue;
       monthSeen.set(mi.order + '|' + mi.label, true);
-      const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + sheetName;
-      agg.set(key, (agg.get(key)||0) + qn);
+
+      const moir = moirIdx > -1 ? row[moirIdx] : null;
+      const orderedQn = orderedIdx > -1 ? numOrZero(row[orderedIdx]) : 0;
+      const nonSerQn = nonSerIdx > -1 ? numOrZero(row[nonSerIdx]) : 0;
+      const moStatus = moStatusIdx > -1 ? row[moStatusIdx] : null;
+
+      // "Serialised Inward" truth: prefer the explicit Serialised_Inward
+      // True/False column when present (this correctly reads False for a
+      // serial that's known but not yet actually received) — only fall
+      // back to "a serial number is present" when there's no explicit flag.
+      const explicitFlag = serialisedInwardFlagIdx > -1 ? parseBoolLike(row[serialisedInwardFlagIdx]) : null;
+      const hasSerial = explicitFlag !== null
+        ? explicitFlag
+        : (serialColIdx > -1 && row[serialColIdx] != null && row[serialColIdx] !== '');
+
+      // Primary Qty = "how much has actually been inwarded" — matching the
+      // same definition used in Inward mode — NOT the dispatched/DC qty.
+      // Serial-controlled lines count 1 only when confirmed received;
+      // non-serial lines use NonSerialised_Inward_Qnty directly. If this
+      // workbook doesn't have that Inward-specific schema at all, fall
+      // back to whatever generic transfer-qty column was found.
+      const isSerialItem = (serialControlledIdx > -1 && parseBoolLike(row[serialControlledIdx]) === true)
+        || (serialColIdx > -1 && row[serialColIdx] != null && row[serialColIdx] !== '');
+      let qn;
+      if(isSerialItem){
+        qn = hasSerial ? 1 : 0;
+      } else if(nonSerIdx > -1){
+        qn = nonSerQn;
+      } else {
+        qn = qtyIdx > -1 ? numOrZero(row[qtyIdx]) : 0;
+      }
+      // NOTE: zero-qty rows are kept (not skipped) so every MO/IR line for
+      // the item+store+month is visible in the detail table even when the
+      // transfer hasn't actually moved material yet.
+
+      const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + sheetName + '|' + (moir!=null?String(moir):'');
+      const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
+      cur.qty += qn;
+      cur.ordered += orderedQn;
+      cur.nonSer += nonSerQn;
+      if(hasSerial) cur.serial = true;
+      if(moStatus && !cur.moStatus) cur.moStatus = String(moStatus);
+      agg.set(key, cur);
     }
 
     onProgress({phase:'done-sheet', sheet:sheetName, sheetIndex:s, sheetTotal:sheetNames.length, rows: rowCount});
@@ -765,7 +949,7 @@ async function parseS2S(buffer, onProgress){
   const records = [];
   for(const [key, val] of agg.entries()){
     const parts = key.split('|');
-    records.push([parseInt(parts[0],10), parts[1], parts[2], parts[3], parts[4], val, parts[5]]);
+    records.push([parseInt(parts[0],10), parts[1], parts[2], parts[3], parts[4], val.qty, parts[5], val.moir||'', val.ordered, val.nonSer, val.serial, val.moStatus||'']);
   }
 
   const months = Array.from(monthSeen.keys()).map(k=>{
@@ -958,7 +1142,20 @@ $('newUploadBtn').addEventListener('click', ()=>{
    Combo boxes (month / item / store / circle) — searchable multi-select
    ======================================================================= */
 function makeCombo(inputId, listId, getOptions, filterSet, placeholder){
-  const input = $(inputId), list = $(listId);
+  // Clone + replace the input/list nodes first. This strips any event
+  // listeners left over from a PREVIOUS file upload in the same browser
+  // tab — without this, re-uploading a file (or switching mode and
+  // uploading again) stacks a second, stale set of listeners on top of
+  // the old ones: the old listeners still reference the earlier file's
+  // data/filter objects, so clicking an option looks like it "ticks" but
+  // doesn't actually filter the (now-current) table.
+  const oldInput = document.getElementById(inputId);
+  const oldList = document.getElementById(listId);
+  const input = oldInput.cloneNode(true);
+  const list = oldList.cloneNode(true);
+  oldInput.parentNode.replaceChild(input, oldInput);
+  oldList.parentNode.replaceChild(list, oldList);
+
   function renderList(query){
     const q = (query||'').trim().toLowerCase();
     const opts = getOptions();
@@ -1000,10 +1197,10 @@ let monthCombo, itemCombo, storeCombo, circleCombo;
 
 function buildComboOptions(){
   const d = state.raw;
-  monthCombo = monthCombo || makeCombo('monthInput','monthList', ()=> d.months.map(m=>({value:m.label, label:m.label})), state.filters.months, 'All months');
-  itemCombo = itemCombo || makeCombo('itemInput','itemList', itemOptionsList, state.filters.items, 'All items');
-  storeCombo = storeCombo || makeCombo('storeInput','storeList', ()=> d.stores.slice().sort().map(s=>({value:s,label:s})), state.filters.stores, 'All stores');
-  circleCombo = circleCombo || makeCombo('circleInput','circleList', ()=> d.circles.slice().sort().map(c=>({value:c,label:c})), state.filters.circles, 'All circles');
+  monthCombo = makeCombo('monthInput','monthList', ()=> d.months.map(m=>({value:m.label, label:m.label})), state.filters.months, 'All months');
+  itemCombo = makeCombo('itemInput','itemList', itemOptionsList, state.filters.items, 'All items');
+  storeCombo = makeCombo('storeInput','storeList', ()=> d.stores.slice().sort().map(s=>({value:s,label:s})), state.filters.stores, 'All stores');
+  circleCombo = makeCombo('circleInput','circleList', ()=> d.circles.slice().sort().map(c=>({value:c,label:c})), state.filters.circles, 'All circles');
 }
 function itemOptionsList(){
   const d = state.raw;
@@ -1134,16 +1331,23 @@ let sortedCache = [];
 function renderTable(recs, itemMap){
   const q = $('tableSearch').value.trim().toLowerCase();
   let rows = recs.map(r=>({
-    month:r[1], item:r[2], desc:itemMap.get(r[2])||'', store:r[3], circle:r[4], qty:qtyOf(r), order:r[0]
+    month:r[1], item:r[2], desc:itemMap.get(r[2])||'', store:r[3], circle:r[4], qty:qtyOf(r), order:r[0],
+    moir:r[7]||'', ordered:(r[8]==null?null:r[8]), nonSer:(r[9]==null?null:r[9]), serial:!!r[10], moStatus:r[11]||''
   }));
   if(q){
-    rows = rows.filter(r => r.item.toLowerCase().includes(q) || r.store.toLowerCase().includes(q) || (r.desc||'').toLowerCase().includes(q) || (r.circle||'').toLowerCase().includes(q));
+    rows = rows.filter(r => r.item.toLowerCase().includes(q) || r.store.toLowerCase().includes(q) || (r.desc||'').toLowerCase().includes(q) || (r.circle||'').toLowerCase().includes(q) || (r.moir||'').toLowerCase().includes(q) || (r.moStatus||'').toLowerCase().includes(q));
   }
   const {key,dir} = state.sort;
   rows.sort((a,b)=>{
     if(key==='month'){ return (a.order-b.order)*dir; }
+    if(key==='qty' || key==='ordered' || key==='nonSer'){
+      const av=a[key]||0, bv=b[key]||0;
+      return (av-bv)*dir;
+    }
+    if(key==='serial'){
+      return ((a.serial?1:0)-(b.serial?1:0))*dir;
+    }
     let av=a[key], bv=b[key];
-    if(key==='qty'){ return (av-bv)*dir; }
     av = String(av||''); bv = String(bv||'');
     return av.localeCompare(bv)*dir;
   });
@@ -1156,11 +1360,20 @@ function renderTable(recs, itemMap){
 
   const tbody = $('tableBody');
   if(pageRows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="6"><div class="emptystate">No rows match the current filters / search.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11"><div class="emptystate">No rows match the current filters / search.</div></td></tr>';
   } else {
     tbody.innerHTML = pageRows.map(r=>
-      '<tr><td>'+escapeHtml(r.month)+'</td><td>'+escapeHtml(r.item)+'</td><td class="desc" title="'+escapeHtml(r.desc)+'">'+escapeHtml(r.desc||'—')+'</td>'+
-      '<td>'+escapeHtml(r.store)+'</td><td>'+escapeHtml(r.circle||'—')+'</td><td>'+Math.round(r.qty).toLocaleString()+'</td></tr>'
+      '<tr><td>'+escapeHtml(r.month)+'</td>'+
+      '<td>'+escapeHtml(r.moir||'—')+'</td>'+
+      '<td>'+escapeHtml(r.moStatus||'—')+'</td>'+
+      '<td>'+escapeHtml(r.item)+'</td>'+
+      '<td class="desc" title="'+escapeHtml(r.desc)+'">'+escapeHtml(r.desc||'—')+'</td>'+
+      '<td>'+escapeHtml(r.store)+'</td>'+
+      '<td>'+escapeHtml(r.circle||'—')+'</td>'+
+      '<td>'+(r.ordered==null?'—':Math.round(r.ordered).toLocaleString())+'</td>'+
+      '<td>'+(r.nonSer==null?'—':Math.round(r.nonSer).toLocaleString())+'</td>'+
+      '<td>'+(r.serial?'True':'False')+'</td>'+
+      '<td>'+Math.round(r.qty).toLocaleString()+'</td></tr>'
     ).join('');
   }
   $('tableCount').textContent = rows.length.toLocaleString() + ' aggregated rows';
@@ -1183,20 +1396,41 @@ $('prevPageBtn').addEventListener('click', ()=>{ if(state.page>1){ state.page--;
 $('nextPageBtn').addEventListener('click', ()=>{ state.page++; render(); });
 
 $('exportCsvBtn').addEventListener('click', ()=>{
-  const rows = sortedCache;
-  const header = ['Month','Item Code','Description','Store (SS)','Circle','Qty'];
-  const lines = [header.join(',')];
-  rows.forEach(r=>{
-    const vals = [r.month, r.item, (r.desc||'').replace(/"/g,'""'), r.store, r.circle||'', Math.round(r.qty)];
-    lines.push(vals.map(v=> typeof v==='string' && (v.includes(',')||v.includes('"')) ? '"'+v+'"' : v).join(','));
-  });
-  const blob = new Blob([lines.join('\n')], {type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = (state.mode==='inward'?'mrs_inward':'issuance') + '_filtered.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  try{
+    const rows = sortedCache;
+    if(!rows || rows.length === 0){
+      alert('There is no data to export — adjust or clear your filters and try again.');
+      return;
+    }
+    const header = ['Month','MO/IR Number','MO Status','Item Code','Item Description','Store (SS)','Circle','Ordered Qnty','NonSerialised Inward Qnty','Serialised Inward','Qty'];
+    const lines = [header.join(',')];
+    rows.forEach(r=>{
+      const vals = [
+        r.month, r.moir||'', r.moStatus||'', r.item, (r.desc||'').replace(/"/g,'""'), r.store, r.circle||'',
+        r.ordered==null?'':Math.round(r.ordered), r.nonSer==null?'':Math.round(r.nonSer),
+        r.serial?'True':'False', Math.round(r.qty)
+      ];
+      lines.push(vals.map(v=> typeof v==='string' && (v.includes(',')||v.includes('"')) ? '"'+v+'"' : v).join(','));
+    });
+    // Leading BOM so Excel reliably detects UTF-8 (needed since descriptions
+    // can contain non-ASCII characters).
+    const csvText = '\uFEFF' + lines.join('\n');
+    const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const namePrefix = state.mode==='inward' ? 'mrs_inward' : state.mode==='issuance' ? 'issuance' : 's2s_transfer';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = namePrefix + '_filtered.csv';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }catch(err){
+    alert('Could not export CSV: ' + (err && err.message ? err.message : err) + '\n\nIf this keeps happening, try opening this file directly in Chrome/Edge (not inside a preview window) and export again.');
+  }
 });
+
 </script>
 </body>
 </html>
