@@ -391,6 +391,7 @@
         <label>Transaction type</label>
         <div class="segwrap" id="txnSeg">
           <button data-v="allocate" class="on">Allocate only</button>
+          <button data-v="recover">Recovery only</button>
           <button data-v="all">All</button>
           <button data-v="net">Net</button>
         </div>
@@ -436,19 +437,7 @@
       <div class="panel-body">
         <div class="tablewrap">
           <table class="datatable" id="dataTable">
-            <thead><tr>
-              <th data-k="month">Month</th>
-              <th data-k="moir">MO/IR Number</th>
-              <th data-k="moStatus">MO Status</th>
-              <th data-k="item">Item Code</th>
-              <th class="desc" data-k="desc">Item Description</th>
-              <th data-k="store">Store (SS)</th>
-              <th data-k="circle">Circle</th>
-              <th data-k="ordered">Ordered Qnty</th>
-              <th data-k="nonSer">NonSerialised Inward Qnty</th>
-              <th data-k="serial">Serialised Inward</th>
-              <th data-k="qty">Qty</th>
-            </tr></thead>
+            <thead id="tableHead"></thead>
             <tbody id="tableBody"></tbody>
           </table>
         </div>
@@ -464,9 +453,7 @@
     </div>
   </section>
 
-  <div class="footnote">Parsing happens right in this page · nothing leaves your browser
-  <p>Made By chandan yadav with ❤️.</p>
-  </div>
+  <div class="footnote">Parsing happens right in this page · nothing leaves your browser</div>
 </div>
 
 <script>
@@ -534,6 +521,17 @@ function findMoStatusIdx(looseHeaders){
 }
 function findOrderDateIdx(looseHeaders){
   return findLooseAny(looseHeaders, ['i360orderdate','orderdate','podate']);
+}
+// Issuance-report-specific columns — these don't exist in Inward/S2S files,
+// so they're only ever consulted from the 'issuance' branch of the parser.
+function findTxnNumberIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['transactionnumber','txnnumber','transactionno','txnno']);
+}
+function findEngineerNameIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['engineername','feengineername','fename','fieldengineername']);
+}
+function findMaterialTypeIdx(looseHeaders){
+  return findLooseAny(looseHeaders, ['orderedquality','materialtype','materialcondition','itemcondition','conditiontype']);
 }
 // Reads a True/False-ish cell (string "true"/"false", boolean, or 1/0).
 // Returns null when the cell doesn't clearly say either way (blank, or a
@@ -659,6 +657,11 @@ async function parseWorkbook(buffer, mode, onProgress){
     const serialExtraIdx = mode === 'inward' ? serialIdx : findSerialColIdx(looseHeaders);
     const serialisedInwardFlagIdx = findSerialisedInwardFlagIdx(looseHeaders);
     const moStatusIdx = findMoStatusIdx(looseHeaders);
+    // Issuance-only columns — Inward/S2S files never have these, so they're
+    // simply -1 (unused) there and change nothing for those modes.
+    const txnNumberIdx = findTxnNumberIdx(looseHeaders);
+    const engineerNameIdx = findEngineerNameIdx(looseHeaders);
+    const materialTypeIdx = findMaterialTypeIdx(looseHeaders);
 
     const mi = monthInfo(sheetName);
     monthSeen.set(mi.order + '|' + mi.label, true);
@@ -683,10 +686,22 @@ async function parseWorkbook(buffer, mode, onProgress){
       const circle = circleIdx > -1 ? row[circleIdx] : null;
       if(circle) circleSet.add(circle);
 
-      const moir = moirIdx > -1 ? row[moirIdx] : null;
+      // For Issuance files there's no real "MO/IR Number" — the closest
+      // equivalent unique identifier is the Transaction Number, so that's
+      // what this field holds in that mode. Inward keeps using moirIdx
+      // exactly as before — this branch changes nothing for Inward.
+      const moir = mode === 'issuance'
+        ? (txnNumberIdx > -1 ? row[txnNumberIdx] : (moirIdx > -1 ? row[moirIdx] : null))
+        : (moirIdx > -1 ? row[moirIdx] : null);
       const orderedQn = orderedIdx > -1 ? numOrZero(row[orderedIdx]) : 0;
       const nonSerQn = nonSerExtraIdx > -1 ? numOrZero(row[nonSerExtraIdx]) : 0;
       const moStatus = moStatusIdx > -1 ? row[moStatusIdx] : null;
+      // Serial number for this row, if any — a blank value groups all the
+      // non-serial rows for this MO/IR together as before; a real serial
+      // number gives that unit its OWN row in the detail table instead of
+      // being folded into one MO/IR-level total.
+      const serialNoVal = serialExtraIdx > -1 ? row[serialExtraIdx] : null;
+      const serialNo = serialNoVal != null ? String(serialNoVal) : '';
       // "Serialised Inward" truth: prefer an explicit Serialised_Inward
       // True/False column when the workbook has one (this correctly shows
       // False for a serial that's known but not yet actually received).
@@ -705,8 +720,8 @@ async function parseWorkbook(buffer, mode, onProgress){
         // cancelled later) so every MO/IR line for the item+store is still
         // visible in the detail table, with Qty / NonSerialised showing 0
         // and Serialised showing False.
-        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'');
-        const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
+        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'') + '|' + serialNo;
+        const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null, serialNo};
         cur.qty += qn;
         cur.ordered += orderedQn;
         cur.nonSer += nonSerQn;
@@ -716,13 +731,17 @@ async function parseWorkbook(buffer, mode, onProgress){
       } else {
         const qn = numOrZero(qtyIdx > -1 ? row[qtyIdx] : null);
         const txnRaw = txnIdx > -1 ? String(row[txnIdx]||'').trim().toLowerCase() : 'allocate';
-        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'');
-        const cur = agg.get(key) || {allocate:0, recover:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
-        if(txnRaw === 'recover') cur.recover += qn; else cur.allocate += qn;
+        const engineerName = engineerNameIdx > -1 ? row[engineerNameIdx] : null;
+        const materialType = materialTypeIdx > -1 ? row[materialTypeIdx] : null;
+        const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + (moir!=null?String(moir):'') + '|' + serialNo;
+        const cur = agg.get(key) || {allocate:0, recover:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null, serialNo, engineerName:null, materialType:null, hasAllocate:false, hasRecover:false};
+        if(txnRaw === 'recover'){ cur.recover += qn; cur.hasRecover = true; } else { cur.allocate += qn; cur.hasAllocate = true; }
         cur.ordered += orderedQn;
         cur.nonSer += nonSerQn;
         if(hasSerial) cur.serial = true;
         if(moStatus && !cur.moStatus) cur.moStatus = String(moStatus);
+        if(engineerName && !cur.engineerName) cur.engineerName = String(engineerName);
+        if(materialType && !cur.materialType) cur.materialType = String(materialType);
         agg.set(key, cur);
       }
     }
@@ -742,10 +761,12 @@ async function parseWorkbook(buffer, mode, onProgress){
     const circle = parts[4];
     const moir = val.moir || '';
     const moStatus = val.moStatus || '';
+    const serialNo = val.serialNo || '';
     if(mode === 'inward'){
-      records.push([order, label, item, store, circle, val.qty, null, moir, val.ordered, val.nonSer, val.serial, moStatus]);
+      records.push([order, label, item, store, circle, val.qty, null, moir, val.ordered, val.nonSer, val.serial, moStatus, serialNo]);
     } else {
-      records.push([order, label, item, store, circle, val.allocate, val.recover, moir, val.ordered, val.nonSer, val.serial, moStatus]);
+      const txnType = (val.hasAllocate && val.hasRecover) ? 'Mixed' : (val.hasRecover ? 'Recover' : 'Allocate');
+      records.push([order, label, item, store, circle, val.allocate, val.recover, moir, val.ordered, val.nonSer, val.serial, moStatus, serialNo, val.engineerName||'', val.materialType||'', txnType]);
     }
   }
 
@@ -924,9 +945,11 @@ async function parseS2S(buffer, onProgress){
       // NOTE: zero-qty rows are kept (not skipped) so every MO/IR line for
       // the item+store+month is visible in the detail table even when the
       // transfer hasn't actually moved material yet.
+      const serialNoVal = serialColIdx > -1 ? row[serialColIdx] : null;
+      const serialNo = serialNoVal != null ? String(serialNoVal) : '';
 
-      const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + sheetName + '|' + (moir!=null?String(moir):'');
-      const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null};
+      const key = mi.order + '|' + mi.label + '|' + item + '|' + store + '|' + (circle||'') + '|' + sheetName + '|' + (moir!=null?String(moir):'') + '|' + serialNo;
+      const cur = agg.get(key) || {qty:0, ordered:0, nonSer:0, serial:false, moir:(moir!=null?String(moir):''), moStatus:null, serialNo};
       cur.qty += qn;
       cur.ordered += orderedQn;
       cur.nonSer += nonSerQn;
@@ -951,7 +974,7 @@ async function parseS2S(buffer, onProgress){
   const records = [];
   for(const [key, val] of agg.entries()){
     const parts = key.split('|');
-    records.push([parseInt(parts[0],10), parts[1], parts[2], parts[3], parts[4], val.qty, parts[5], val.moir||'', val.ordered, val.nonSer, val.serial, val.moStatus||'']);
+    records.push([parseInt(parts[0],10), parts[1], parts[2], parts[3], parts[4], val.qty, parts[5], val.moir||'', val.ordered, val.nonSer, val.serial, val.moStatus||'', val.serialNo||'']);
   }
 
   const months = Array.from(monthSeen.keys()).map(k=>{
@@ -1103,6 +1126,7 @@ function onDataReady(data){
     txn: 'allocate', flow: (data.flows && data.flows[0]) || null
   };
   state.page = 1;
+  state.sort = {key:'qty', dir:-1};
 
   $('loadedFileName').textContent = state.fileName;
   const skippedNote = data.sheetsSkipped && data.sheetsSkipped.length
@@ -1111,6 +1135,7 @@ function onDataReady(data){
   $('loadedStats').textContent = data.totalRows.toLocaleString() + ' rows across ' + data.months.length + ' month(s)' + skippedNote;
 
   buildComboOptions();
+  renderTableHeader();
   setupView.classList.add('hidden');
   dashView.classList.remove('hidden');
   document.getElementById('txnSeg').style.display = state.mode==='issuance' ? 'flex' : 'none';
@@ -1259,6 +1284,7 @@ function qtyOf(rec){
   if(state.mode === 'inward' || state.mode === 's2s') return rec[5];
   const allocate = rec[5], recover = rec[6];
   if(state.filters.txn === 'allocate') return allocate;
+  if(state.filters.txn === 'recover') return recover;
   if(state.filters.txn === 'all') return allocate + recover;
   return allocate - recover; // net
 }
@@ -1330,14 +1356,85 @@ function renderChart(byStore, byItem, byMonth){
 }
 
 let sortedCache = [];
+
+// Column definitions for the detail table. STANDARD_COLUMNS is used for
+// Inward and S2S and is IDENTICAL, in order and content, to the table that
+// was there before — nothing changes for those two modes. ISSUANCE_COLUMNS
+// swaps out the MO/IR-centric fields (which don't exist in an Issuance
+// report) for the fields that report actually has: Transaction Number,
+// Engineer Name, Material Type, and Txn Type (Allocate/Recover).
+const STANDARD_COLUMNS = [
+  {k:'month', label:'Month'},
+  {k:'moir', label:'MO/IR Number'},
+  {k:'moStatus', label:'MO Status'},
+  {k:'item', label:'Item Code'},
+  {k:'serialNo', label:'Serial Number'},
+  {k:'desc', label:'Item Description', cls:'desc'},
+  {k:'store', label:'Store (SS)'},
+  {k:'circle', label:'Circle'},
+  {k:'ordered', label:'Ordered Qnty'},
+  {k:'nonSer', label:'NonSerialised Inward Qnty'},
+  {k:'serial', label:'Serialised Inward'},
+  {k:'qty', label:'Qty'}
+];
+const ISSUANCE_COLUMNS = [
+  {k:'month', label:'Month'},
+  {k:'moir', label:'Transaction Number'},
+  {k:'engineerName', label:'Engineer Name'},
+  {k:'item', label:'Item Code'},
+  {k:'serialNo', label:'Serial Number'},
+  {k:'desc', label:'Item Description', cls:'desc'},
+  {k:'store', label:'Store (SS)'},
+  {k:'circle', label:'Circle'},
+  {k:'materialType', label:'Material Type'},
+  {k:'txnType', label:'Txn Type'},
+  {k:'qty', label:'Qty'}
+];
+function currentColumns(){ return state.mode === 'issuance' ? ISSUANCE_COLUMNS : STANDARD_COLUMNS; }
+
+function cellText(r, k){
+  switch(k){
+    case 'month': return r.month;
+    case 'moir': return r.moir || '—';
+    case 'moStatus': return r.moStatus || '—';
+    case 'item': return r.item;
+    case 'serialNo': return r.serialNo || '—';
+    case 'store': return r.store;
+    case 'circle': return r.circle || '—';
+    case 'ordered': return r.ordered==null ? '—' : Math.round(r.ordered).toLocaleString();
+    case 'nonSer': return r.nonSer==null ? '—' : Math.round(r.nonSer).toLocaleString();
+    case 'serial': return r.serial ? 'True' : 'False';
+    case 'qty': return Math.round(r.qty).toLocaleString();
+    case 'engineerName': return r.engineerName || '—';
+    case 'materialType': return r.materialType || '—';
+    case 'txnType': return r.txnType || '—';
+    default: return '';
+  }
+}
+
+function renderTableHeader(){
+  const cols = currentColumns();
+  $('tableHead').innerHTML = '<tr>' + cols.map(c =>
+    '<th' + (c.cls ? ' class="'+c.cls+'"' : '') + ' data-k="'+c.k+'">' + escapeHtml(c.label) + '</th>'
+  ).join('') + '</tr>';
+  document.querySelectorAll('#dataTable th').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.k;
+      if(state.sort.key === k){ state.sort.dir *= -1; } else { state.sort.key = k; state.sort.dir = k==='qty' ? -1 : 1; }
+      render();
+    });
+  });
+}
+
 function renderTable(recs, itemMap){
   const q = $('tableSearch').value.trim().toLowerCase();
   let rows = recs.map(r=>({
     month:r[1], item:r[2], desc:itemMap.get(r[2])||'', store:r[3], circle:r[4], qty:qtyOf(r), order:r[0],
-    moir:r[7]||'', ordered:(r[8]==null?null:r[8]), nonSer:(r[9]==null?null:r[9]), serial:!!r[10], moStatus:r[11]||''
+    moir:r[7]||'', ordered:(r[8]==null?null:r[8]), nonSer:(r[9]==null?null:r[9]), serial:!!r[10], moStatus:r[11]||'', serialNo:r[12]||'',
+    engineerName:r[13]||'', materialType:r[14]||'', txnType:r[15]||''
   }));
   if(q){
-    rows = rows.filter(r => r.item.toLowerCase().includes(q) || r.store.toLowerCase().includes(q) || (r.desc||'').toLowerCase().includes(q) || (r.circle||'').toLowerCase().includes(q) || (r.moir||'').toLowerCase().includes(q) || (r.moStatus||'').toLowerCase().includes(q));
+    rows = rows.filter(r => r.item.toLowerCase().includes(q) || r.store.toLowerCase().includes(q) || (r.desc||'').toLowerCase().includes(q) || (r.circle||'').toLowerCase().includes(q) || (r.moir||'').toLowerCase().includes(q) || (r.moStatus||'').toLowerCase().includes(q) || (r.serialNo||'').toLowerCase().includes(q) || (r.engineerName||'').toLowerCase().includes(q) || (r.materialType||'').toLowerCase().includes(q));
   }
   const {key,dir} = state.sort;
   rows.sort((a,b)=>{
@@ -1360,22 +1457,17 @@ function renderTable(recs, itemMap){
   const start = (state.page-1)*state.pageSize;
   const pageRows = rows.slice(start, start+state.pageSize);
 
+  const cols = currentColumns();
   const tbody = $('tableBody');
   if(pageRows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="11"><div class="emptystate">No rows match the current filters / search.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="'+cols.length+'"><div class="emptystate">No rows match the current filters / search.</div></td></tr>';
   } else {
     tbody.innerHTML = pageRows.map(r=>
-      '<tr><td>'+escapeHtml(r.month)+'</td>'+
-      '<td>'+escapeHtml(r.moir||'—')+'</td>'+
-      '<td>'+escapeHtml(r.moStatus||'—')+'</td>'+
-      '<td>'+escapeHtml(r.item)+'</td>'+
-      '<td class="desc" title="'+escapeHtml(r.desc)+'">'+escapeHtml(r.desc||'—')+'</td>'+
-      '<td>'+escapeHtml(r.store)+'</td>'+
-      '<td>'+escapeHtml(r.circle||'—')+'</td>'+
-      '<td>'+(r.ordered==null?'—':Math.round(r.ordered).toLocaleString())+'</td>'+
-      '<td>'+(r.nonSer==null?'—':Math.round(r.nonSer).toLocaleString())+'</td>'+
-      '<td>'+(r.serial?'True':'False')+'</td>'+
-      '<td>'+Math.round(r.qty).toLocaleString()+'</td></tr>'
+      '<tr>' + cols.map(c=>
+        c.k === 'desc'
+          ? '<td class="desc" title="'+escapeHtml(r.desc)+'">'+escapeHtml(r.desc||'—')+'</td>'
+          : '<td>'+escapeHtml(String(cellText(r,c.k)))+'</td>'
+      ).join('') + '</tr>'
     ).join('');
   }
   $('tableCount').textContent = rows.length.toLocaleString() + ' aggregated rows';
@@ -1386,13 +1478,6 @@ function renderTable(recs, itemMap){
   });
 }
 
-document.querySelectorAll('#dataTable th').forEach(th=>{
-  th.addEventListener('click', ()=>{
-    const k = th.dataset.k;
-    if(state.sort.key === k){ state.sort.dir *= -1; } else { state.sort.key = k; state.sort.dir = k==='qty' ? -1 : 1; }
-    render();
-  });
-});
 $('tableSearch').addEventListener('input', ()=>{ state.page = 1; render(); });
 $('prevPageBtn').addEventListener('click', ()=>{ if(state.page>1){ state.page--; render(); } });
 $('nextPageBtn').addEventListener('click', ()=>{ state.page++; render(); });
@@ -1404,14 +1489,21 @@ $('exportCsvBtn').addEventListener('click', ()=>{
       alert('There is no data to export — adjust or clear your filters and try again.');
       return;
     }
-    const header = ['Month','MO/IR Number','MO Status','Item Code','Item Description','Store (SS)','Circle','Ordered Qnty','NonSerialised Inward Qnty','Serialised Inward','Qty'];
+    const cols = currentColumns();
+    const rawValue = (r, k) => {
+      switch(k){
+        case 'desc': return (r.desc||'').replace(/"/g,'""');
+        case 'ordered': return r.ordered==null?'':Math.round(r.ordered);
+        case 'nonSer': return r.nonSer==null?'':Math.round(r.nonSer);
+        case 'serial': return r.serial?'True':'False';
+        case 'qty': return Math.round(r.qty);
+        default: { const v = r[k]; return v==null ? '' : v; }
+      }
+    };
+    const header = cols.map(c=>c.label);
     const lines = [header.join(',')];
     rows.forEach(r=>{
-      const vals = [
-        r.month, r.moir||'', r.moStatus||'', r.item, (r.desc||'').replace(/"/g,'""'), r.store, r.circle||'',
-        r.ordered==null?'':Math.round(r.ordered), r.nonSer==null?'':Math.round(r.nonSer),
-        r.serial?'True':'False', Math.round(r.qty)
-      ];
+      const vals = cols.map(c=>rawValue(r,c.k));
       lines.push(vals.map(v=> typeof v==='string' && (v.includes(',')||v.includes('"')) ? '"'+v+'"' : v).join(','));
     });
     // Leading BOM so Excel reliably detects UTF-8 (needed since descriptions
