@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flow — Inward, Issuance &amp; S2S Console</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwQTBFMTMiLz4KICA8cmVjdCB4PSIxMyIgeT0iMzYiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxOCIgcng9IjMiIGZpbGw9IiMyQkRGQzAiLz4KICA8cmVjdCB4PSIyNyIgeT0iMjQiIHdpZHRoPSIxMCIgaGVpZ2h0PSIzMCIgcng9IjMiIGZpbGw9IiNGNUE5M0YiLz4KICA8cmVjdCB4PSI0MSIgeT0iMTIiIHdpZHRoPSIxMCIgaGVpZ2h0PSI0MiIgcng9IjMiIGZpbGw9IiM3QzkzRjUiLz4KPC9zdmc+">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwQTBFMTMiLz4KICA8cmVjdCB4PSIxMyIgeT0iMzYiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxOCIgcng9IjMiIGZpbGw9IiMyQkRGQzAiLz4KICA8cmVjdCB4PSIyNyIgeT0iMjQiIHdpZHRoPSIxMCIgaGVpZ2h0PSIzMCIgcng9IjMiIGZpbGw9IiNGNUE5M0YiLz4KICA8cmVjdCB4PSI0MSIgeT0iMTIiIHdpZHRoPSIxMCIgaGVpZ2h0PSI0MiIgcng9IjMiIGZpbGw9IiM3QzkzRjUiLz4KPC9zdmc+">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -161,6 +161,31 @@
   }
   .notebox b{ color:var(--text); }
   .notebox ul{ margin:8px 0 0; padding-left:18px; }
+
+  /* ---------- Calculation status bar + calc dashboard ---------- */
+  .calcbar{
+    margin-top:20px; padding:16px; border-radius:var(--radius); background:var(--bg-panel);
+    border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:12px;
+  }
+  .calcbar-status{ display:flex; flex-wrap:wrap; gap:8px; }
+  .calcchip{
+    font-family:var(--mono); font-size:11.5px; color:var(--text-dim); background:var(--bg-panel-raised);
+    border:1px solid var(--border); padding:6px 10px; border-radius:100px;
+  }
+  .calcchip b{ color:var(--text-dim); font-weight:600; }
+  .calcchip.loaded{ color:var(--text-muted); border-color:var(--teal); }
+  .calcchip.loaded b{ color:var(--teal); }
+  .calc-flow-btn{ font-family:var(--mono); }
+  .calc-flow-btn b{ color:var(--indigo); }
+  #calcTableInward td, #calcTableS2sIn td, #calcTableIssuance td, #calcTableS2sOut td, #calcTableFinal td,
+  #calcTableInward th, #calcTableS2sIn th, #calcTableIssuance th, #calcTableS2sOut th, #calcTableFinal th{
+    padding:9px 12px; border-bottom:1px solid var(--border-soft); font-size:12.5px; text-align:left;
+  }
+  #calcTableInward th, #calcTableS2sIn th, #calcTableIssuance th, #calcTableS2sOut th, #calcTableFinal th{
+    font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim);
+    background:var(--bg-panel-raised);
+  }
 
   .hidden{ display:none !important; }
   .errbox{
@@ -346,6 +371,15 @@
       <div class="errbox hidden" id="errBox"></div>
     </div>
 
+    <div class="calcbar">
+      <div class="calcbar-status">
+        <span class="calcchip" id="chipInward">MRS Inward: <b>not loaded</b></span>
+        <span class="calcchip" id="chipIssuance">Issuance: <b>not loaded</b></span>
+        <span class="calcchip" id="chipS2s">S2S Transfer: <b>not loaded</b></span>
+      </div>
+      <button class="btn" id="openCalcBtn" disabled>Open Calculation Dashboard →</button>
+    </div>
+
     <div class="notebox">
       <b>How quantities are computed</b>
       <ul>
@@ -356,6 +390,7 @@
         <li>For a 70–110MB workbook, expect roughly 30 seconds to 2 minutes to open the file before the per-sheet progress starts moving — that first stretch is the spreadsheet engine unpacking the workbook, and it's normal for it to look quiet.</li>
         <li>Everything happens locally in this browser tab; the file is never uploaded anywhere.</li>
         <li><b>Detail table:</b> the "Detail — month × item × store" table (bottom of the dashboard) now also shows <b>MO/IR Number</b>, <b>Ordered Qnty</b>, <b>NonSerialised Inward Qnty</b> and <b>Serialised Inward (True/False)</b> for every mode — Inward, Issuance and S2S. These are matched from your workbook's own column names automatically (e.g. "MO/IR Number", "Ordered Qty", "Serial No"); if a workbook genuinely doesn't have one of these columns, that cell just shows "—".</li>
+        <li><b>Calculation dashboard:</b> upload any or all three reports above — each stays loaded even after you switch mode and upload another — then hit "Open Calculation Dashboard" to reconcile a single item code at a single store: (MRS Inward + S2S in from other stores) minus (Issuance to FE + S2S out to other stores) = remaining stock, with a downloadable .xlsx of the full breakdown.</li>
       </ul>
     </div>
   </section>
@@ -364,7 +399,10 @@
   <section class="dash hidden" id="dashView">
     <div class="dashtop">
       <div class="fname">Loaded: <b id="loadedFileName">—</b> · <span id="loadedStats"></span></div>
-      <button class="btn ghost small" id="newUploadBtn">Upload a different file</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn ghost small" id="goCalcBtn">Calculation dashboard →</button>
+        <button class="btn ghost small" id="newUploadBtn">Upload a different file</button>
+      </div>
     </div>
 
     <div class="filters">
@@ -454,9 +492,80 @@
     </div>
   </section>
 
-  <div class="footnote">Parsing happens right in this page · nothing leaves your browser
-    <p>Made By chandan yadav with ❤️.</p>
-  </div>
+  <!-- ============ CALCULATION VIEW ============ -->
+  <section class="dash hidden" id="calcView">
+    <div class="dashtop">
+      <div class="fname">Calculation dashboard · reconciles MRS Inward + S2S-in against Issuance + S2S-out, per item &amp; store</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn ghost small" id="calcBackSetupBtn">Upload / manage reports</button>
+        <button class="btn ghost small" id="calcBackDashBtn">Back to detail dashboard</button>
+      </div>
+    </div>
+
+    <div class="notebox hidden" id="calcMissingNote"></div>
+
+    <div class="filters">
+      <div class="field">
+        <label>Item code</label>
+        <input class="combo-input" id="calcItemInput" placeholder="All items" autocomplete="off">
+        <div class="combo-list" id="calcItemList"></div>
+      </div>
+      <div class="field">
+        <label>Store (SS)</label>
+        <input class="combo-input" id="calcStoreInput" placeholder="All stores" autocomplete="off">
+        <div class="combo-list" id="calcStoreList"></div>
+      </div>
+      <div class="field">
+        <label>Stock showing in system (I360)</label>
+        <input class="combo-input" id="calcI360Input" type="number" placeholder="e.g. 42297">
+      </div>
+      <div class="field">
+        <label>Physical stock at store</label>
+        <input class="combo-input" id="calcPhysicalInput" type="number" placeholder="e.g. 24700">
+      </div>
+      <div class="field clearrow">
+        <button class="btn" id="calcRunBtn" style="width:100%;">Calculate</button>
+      </div>
+    </div>
+
+    <div class="notebox hidden" id="calcFlowMap"></div>
+
+    <div id="calcEmptyState" class="emptystate">Pick an item code and a store above, then hit Calculate.</div>
+
+    <div id="calcResults" class="hidden">
+      <div class="statrow" id="calcStatRow"></div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Total order received at store (MRS Inward)</h3></div>
+        <div class="panel-body"><div class="tablewrap"><table class="datatable" id="calcTableInward"></table></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Total S2S inward — Other → SDFX</h3></div>
+        <div class="panel-body"><div class="tablewrap"><table class="datatable" id="calcTableS2sIn"></table></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Total issuance to FE — by month</h3></div>
+        <div class="panel-body"><div class="tablewrap"><table class="datatable" id="calcTableIssuance"></table></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Total S2S outward — SDFX → Other</h3></div>
+        <div class="panel-body"><div class="tablewrap"><table class="datatable" id="calcTableS2sOut"></table></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Final stats</h3>
+          <button class="btn ghost small" id="calcExportBtn">Download calculation (.xlsx)</button>
+        </div>
+        <div class="panel-body"><div class="tablewrap"><table class="datatable" id="calcTableFinal"></table></div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footnote">Parsing happens right in this page · nothing leaves your browser</div>
 </div>
 
 <script>
@@ -566,6 +675,18 @@ function numOrZero(v){
   return isNaN(n) ? 0 : n;
 }
 function yieldToUI(){ return new Promise(r=> setTimeout(r, 0)); }
+// Works out whether an S2S sheet/flow name represents material moving INTO
+// the store in the SS column ("Other to SDFX") or OUT of it ("SDFX to
+// Other") — by checking whether "sdfx" appears before or after " to " in
+// the name. Falls back to 'unknown' if the name doesn't look like either
+// (the calc dashboard lets a person flip it manually in that case).
+function classifyS2SFlow(name){
+  const s = String(name==null?'':name).trim().toLowerCase();
+  const idxSdfx = s.indexOf('sdfx');
+  const idxTo = s.indexOf(' to ');
+  if(idxSdfx === -1 || idxTo === -1) return 'unknown';
+  return idxSdfx > idxTo ? 'inward' : 'outward';
+}
 
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function findCol(headers, includeAll, excludeAny){
@@ -1006,7 +1127,14 @@ const state = {
   page: 1,
   pageSize: 50,
   chartMode: 'store',
-  fileName: ''
+  fileName: '',
+  // Calculation dashboard: unlike `raw` (which is overwritten every upload),
+  // these three slots persist independently so a person can upload Inward,
+  // then Issuance, then S2S, without losing what was already loaded.
+  datasets: { inward: null, issuance: null, s2s: null },
+  s2sFlowDir: {},      // sheet/flow name -> 'inward' | 'outward' | 'unknown'
+  calc: { item:'', store:'', i360:0, physical:0 },
+  calcResult: null
 };
 
 /* =======================================================================
@@ -1124,6 +1252,15 @@ function showError(msg){
 /* ---------- Once aggregation is done ---------- */
 function onDataReady(data){
   state.raw = data;
+  // Keep this report available for the Calculation dashboard even after
+  // the person switches mode and uploads a different report next.
+  state.datasets[state.mode] = data;
+  if(state.mode === 's2s'){
+    (data.flows||[]).forEach(f=>{
+      if(!(f in state.s2sFlowDir)) state.s2sFlowDir[f] = classifyS2SFlow(f);
+    });
+  }
+  updateCalcAvailability();
   state.filters = {
     months: new Set(), items: new Set(), stores: new Set(), circles: new Set(),
     txn: 'allocate', flow: (data.flows && data.flows[0]) || null
@@ -1221,6 +1358,47 @@ function makeCombo(inputId, listId, getOptions, filterSet, placeholder){
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Same look-and-feel as makeCombo() above, but for picking exactly ONE
+// value (used by the Calculation dashboard's item/store pickers) instead
+// of toggling a multi-select filter set.
+function makeSingleCombo(inputId, listId, getOptions, placeholder, onPick){
+  const oldInput = document.getElementById(inputId);
+  const oldList = document.getElementById(listId);
+  const input = oldInput.cloneNode(true);
+  const list = oldList.cloneNode(true);
+  oldInput.parentNode.replaceChild(input, oldInput);
+  oldList.parentNode.replaceChild(list, oldList);
+
+  function renderList(query){
+    const q = (query||'').trim().toLowerCase();
+    const opts = getOptions();
+    const filtered = q ? opts.filter(o => o.label.toLowerCase().includes(q)) : opts;
+    list.innerHTML = '';
+    if(filtered.length === 0){
+      list.innerHTML = '<div class="combo-opt" style="cursor:default;">No matches</div>';
+    } else {
+      filtered.slice(0,200).forEach(o=>{
+        const div = document.createElement('div');
+        div.className = 'combo-opt';
+        div.innerHTML = '<span>' + escapeHtml(o.label) + '</span>';
+        div.addEventListener('mousedown', (e)=>{
+          e.preventDefault();
+          input.value = o.value;
+          list.classList.remove('open');
+          if(onPick) onPick(o.value);
+        });
+        list.appendChild(div);
+      });
+    }
+    list.classList.add('open');
+  }
+  input.addEventListener('focus', ()=> renderList(input.value));
+  input.addEventListener('input', ()=> renderList(input.value));
+  input.addEventListener('blur', ()=> setTimeout(()=> list.classList.remove('open'), 150));
+  input.placeholder = placeholder;
+  return { renderList, input };
 }
 
 let monthCombo, itemCombo, storeCombo, circleCombo;
@@ -1527,6 +1705,373 @@ $('exportCsvBtn').addEventListener('click', ()=>{
     alert('Could not export CSV: ' + (err && err.message ? err.message : err) + '\n\nIf this keeps happening, try opening this file directly in Chrome/Edge (not inside a preview window) and export again.');
   }
 });
+
+/* =======================================================================
+   CALCULATION DASHBOARD — cross-checks all three uploaded reports for one
+   item code at one store: (MRS Inward + S2S-in from other stores) minus
+   (Issuance to FE + S2S-out to other stores) = remaining stock, alongside
+   whatever the person has manually noted for I360 system stock and
+   physical stock at the store.
+   ======================================================================= */
+const calcView = $('calcView');
+const goCalcBtn = $('goCalcBtn'), openCalcBtn = $('openCalcBtn');
+const calcBackSetupBtn = $('calcBackSetupBtn'), calcBackDashBtn = $('calcBackDashBtn');
+
+function updateCalcAvailability(){
+  const map = [['chipInward','inward','MRS Inward'],['chipIssuance','issuance','Issuance'],['chipS2s','s2s','S2S Transfer']];
+  let any = false;
+  map.forEach(([id,key,label])=>{
+    const el = $(id); const d = state.datasets[key];
+    if(d){
+      any = true;
+      el.classList.add('loaded');
+      el.innerHTML = escapeHtml(label) + ': <b>' + d.totalRows.toLocaleString() + ' rows loaded</b>';
+    } else {
+      el.classList.remove('loaded');
+      el.innerHTML = escapeHtml(label) + ': <b>not loaded</b>';
+    }
+  });
+  openCalcBtn.disabled = !any;
+}
+updateCalcAvailability();
+
+function unionItemOptions(){
+  const m = new Map();
+  ['inward','issuance','s2s'].forEach(k=>{
+    const d = state.datasets[k]; if(!d) return;
+    d.itemMap.forEach(([code,desc])=>{ if(!m.has(code)) m.set(code, desc); });
+  });
+  return m;
+}
+function unionStoreOptions(){
+  const s = new Set();
+  ['inward','issuance','s2s'].forEach(k=>{
+    const d = state.datasets[k]; if(!d) return;
+    d.stores.forEach(st=> s.add(st));
+  });
+  return Array.from(s.values()).sort();
+}
+let calcItemCombo, calcStoreCombo;
+function buildCalcCombos(){
+  const items = unionItemOptions();
+  const itemOpts = Array.from(items.entries())
+    .map(([code,desc])=>({ value:code, label: code + (desc ? ' — ' + String(desc).slice(0,60) : '') }))
+    .sort((a,b)=> a.value.localeCompare(b.value));
+  const storeOpts = unionStoreOptions().map(s=>({ value:s, label:s }));
+  calcItemCombo = makeSingleCombo('calcItemInput', 'calcItemList', ()=> itemOpts, 'All items');
+  calcStoreCombo = makeSingleCombo('calcStoreInput', 'calcStoreList', ()=> storeOpts, 'All stores');
+}
+
+function renderCalcFlowMap(){
+  const box = $('calcFlowMap');
+  const d = state.datasets.s2s;
+  if(!d || !d.flows || !d.flows.length){ box.classList.add('hidden'); box.innerHTML=''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<b>S2S sheet direction</b> — auto-detected from the sheet name, click any of these to flip it if it\'s wrong for your workbook:'
+    + '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">'
+    + d.flows.map(f=>{
+        const dir = state.s2sFlowDir[f] || 'unknown';
+        return '<button class="btn ghost small calc-flow-btn" data-flow="'+escapeHtml(f)+'">'+escapeHtml(f)+' → <b>'+dir+'</b></button>';
+      }).join('')
+    + '</div>';
+  box.querySelectorAll('.calc-flow-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const f = btn.dataset.flow;
+      state.s2sFlowDir[f] = state.s2sFlowDir[f] === 'inward' ? 'outward' : 'inward';
+      renderCalcFlowMap();
+    });
+  });
+}
+
+function updateCalcMissingNote(){
+  const missing = [];
+  if(!state.datasets.inward) missing.push('MRS Inward');
+  if(!state.datasets.issuance) missing.push('Issuance');
+  if(!state.datasets.s2s) missing.push('S2S Transfer');
+  const note = $('calcMissingNote');
+  if(missing.length){
+    note.classList.remove('hidden');
+    note.innerHTML = '<b>Not loaded yet:</b> ' + missing.join(', ') + ' — those totals will show as 0 until you go back and upload them.';
+  } else {
+    note.classList.add('hidden');
+  }
+}
+
+function openCalcView(){
+  setupView.classList.add('hidden');
+  dashView.classList.add('hidden');
+  calcView.classList.remove('hidden');
+  buildCalcCombos();
+  renderCalcFlowMap();
+  updateCalcMissingNote();
+}
+openCalcBtn.addEventListener('click', openCalcView);
+goCalcBtn.addEventListener('click', openCalcView);
+calcBackSetupBtn.addEventListener('click', ()=>{
+  calcView.classList.add('hidden');
+  setupView.classList.remove('hidden');
+});
+calcBackDashBtn.addEventListener('click', ()=>{
+  calcView.classList.add('hidden');
+  if(state.raw){ dashView.classList.remove('hidden'); } else { setupView.classList.remove('hidden'); }
+});
+
+function matchVal(v, target){
+  return String(v==null?'':v).trim().toLowerCase() === String(target||'').trim().toLowerCase();
+}
+
+// Pulls every matching row for the chosen item+store out of whichever of
+// the three reports are loaded, splits S2S rows into "in" vs "out" using
+// the direction map above, and rolls everything up into the totals that
+// drive the reconciliation: (Inward + S2S-in) - (Issuance + S2S-out).
+function computeCalculation(item, store){
+  const res = {
+    item, store,
+    inwardRows: [], s2sInRows: [], s2sOutRows: [], issuanceByMonth: new Map(),
+    hasUnknownFlow: false
+  };
+
+  const inwardData = state.datasets.inward;
+  if(inwardData){
+    inwardData.records.forEach(r=>{
+      if(matchVal(r[2], item) && matchVal(r[3], store)){
+        res.inwardRows.push({ order:r[0], month:r[1], moir:r[7]||'—', ordered:r[8]||0, qty:r[5]||0, circle:r[4]||'—' });
+      }
+    });
+  }
+
+  const s2sData = state.datasets.s2s;
+  if(s2sData){
+    s2sData.records.forEach(r=>{
+      if(matchVal(r[2], item) && matchVal(r[3], store)){
+        const flow = r[6];
+        const dir = state.s2sFlowDir[flow] || classifyS2SFlow(flow);
+        if(dir === 'unknown') res.hasUnknownFlow = true;
+        const row = { order:r[0], month:r[1], moir:r[7]||'—', ordered:r[8]||0, qty:r[5]||0, circle:r[4]||'—', flow };
+        if(dir === 'outward'){ res.s2sOutRows.push(row); } else { res.s2sInRows.push(row); }
+      }
+    });
+  }
+
+  const issuanceData = state.datasets.issuance;
+  if(issuanceData){
+    issuanceData.records.forEach(r=>{
+      if(matchVal(r[2], item) && matchVal(r[3], store)){
+        const net = (r[5]||0) - (r[6]||0); // Allocate minus Recover
+        const key = r[0] + '|' + r[1];
+        const cur = res.issuanceByMonth.get(key) || { order:r[0], month:r[1], qty:0, circle:r[4]||'—' };
+        cur.qty += net;
+        res.issuanceByMonth.set(key, cur);
+      }
+    });
+  }
+
+  const byMonth = (a,b)=> a.order-b.order;
+  res.inwardRows.sort(byMonth);
+  res.s2sInRows.sort(byMonth);
+  res.s2sOutRows.sort(byMonth);
+  res.issuanceRows = Array.from(res.issuanceByMonth.values()).sort(byMonth);
+
+  res.totalInward = res.inwardRows.reduce((a,r)=>a+r.qty,0);
+  res.totalS2sIn = res.s2sInRows.reduce((a,r)=>a+r.qty,0);
+  res.totalIssuance = res.issuanceRows.reduce((a,r)=>a+r.qty,0);
+  res.totalS2sOut = res.s2sOutRows.reduce((a,r)=>a+r.qty,0);
+  res.combinedInward = res.totalInward + res.totalS2sIn;
+  res.combinedIssued = res.totalIssuance + res.totalS2sOut;
+  res.remainingCalculated = res.combinedInward - res.combinedIssued;
+  return res;
+}
+
+function renderSimpleTable(tableEl, columns, rows, totalRow){
+  let html = '<thead><tr>' + columns.map(c=>'<th>'+escapeHtml(c.label)+'</th>').join('') + '</tr></thead><tbody>';
+  if(rows.length === 0){
+    html += '<tr><td colspan="'+columns.length+'"><div class="emptystate">No matching rows in this report.</div></td></tr>';
+  } else {
+    rows.forEach(r=>{
+      html += '<tr>' + columns.map(c=>'<td>'+escapeHtml(String(c.get(r)))+'</td>').join('') + '</tr>';
+    });
+  }
+  if(totalRow){
+    html += '<tr style="font-weight:600; background:var(--bg-panel-raised);">'
+      + columns.map(c=>'<td>'+escapeHtml(String(c.get(totalRow)))+'</td>').join('') + '</tr>';
+  }
+  html += '</tbody>';
+  tableEl.innerHTML = html;
+}
+
+function renderCalcResults(result){
+  $('calcEmptyState').classList.add('hidden');
+  $('calcResults').classList.remove('hidden');
+
+  const i360 = state.calc.i360 || 0;
+  const physical = state.calc.physical || 0;
+  const gap = i360 - physical;
+  const variance = i360 - result.remainingCalculated;
+
+  $('calcStatRow').innerHTML = [
+    ['Combined Inward (MRS + S2S In)', Math.round(result.combinedInward).toLocaleString()],
+    ['Combined Issued (FE + S2S Out)', Math.round(result.combinedIssued).toLocaleString()],
+    ['Remaining Stock (Calculated)', Math.round(result.remainingCalculated).toLocaleString()],
+    ['Total Gap (I360 − Physical)', Math.round(gap).toLocaleString()]
+  ].map(([lbl,val])=> '<div class="stat accent"><div class="lbl">'+escapeHtml(lbl)+'</div><div class="val">'+val+'</div></div>').join('');
+
+  const qtyCol = (label,key)=>({label, get:r=>Math.round(r[key]||0).toLocaleString()});
+  const inwardCols = [{label:'Month',get:r=>r.month},{label:'MO/IR Number',get:r=>r.moir},qtyCol('Ordered Qnty','ordered'),qtyCol('Inward Qnty','qty'),{label:'Circle',get:r=>r.circle}];
+  const s2sOutCols = [{label:'Month',get:r=>r.month},{label:'MO/IR Number',get:r=>r.moir},qtyCol('Ordered Qnty','ordered'),qtyCol('Outward Qnty','qty'),{label:'Circle',get:r=>r.circle}];
+  const issuanceCols = [{label:'Month',get:r=>r.month},qtyCol('Net Issued Qty','qty'),{label:'Circle',get:r=>r.circle}];
+  const finalCols = [{label:'Metric',get:r=>r.label},{label:'Value',get:r=>r.value}];
+
+  renderSimpleTable($('calcTableInward'), inwardCols, result.inwardRows,
+    {month:'Total', moir:'', ordered:result.inwardRows.reduce((a,r)=>a+r.ordered,0), qty:result.totalInward, circle:''});
+  renderSimpleTable($('calcTableS2sIn'), inwardCols, result.s2sInRows,
+    {month:'Total', moir:'', ordered:result.s2sInRows.reduce((a,r)=>a+r.ordered,0), qty:result.totalS2sIn, circle:''});
+  renderSimpleTable($('calcTableIssuance'), issuanceCols, result.issuanceRows,
+    {month:'Total', qty:result.totalIssuance, circle:''});
+  renderSimpleTable($('calcTableS2sOut'), s2sOutCols, result.s2sOutRows,
+    {month:'Total', moir:'', ordered:result.s2sOutRows.reduce((a,r)=>a+r.ordered,0), qty:result.totalS2sOut, circle:''});
+  renderSimpleTable($('calcTableFinal'), finalCols, [
+    {label:'Combined Inward (MRS Inward + S2S In)', value:Math.round(result.combinedInward).toLocaleString()},
+    {label:'Combined Issued (FE Issuance + S2S Out)', value:Math.round(result.combinedIssued).toLocaleString()},
+    {label:'Remaining Stock (Calculated)', value:Math.round(result.remainingCalculated).toLocaleString()},
+    {label:'Stock showing in I360 (manual entry)', value:Math.round(i360).toLocaleString()},
+    {label:'Physical stock at store (manual entry)', value:Math.round(physical).toLocaleString()},
+    {label:'Total Gap (I360 − Physical)', value:Math.round(gap).toLocaleString()},
+    {label:'Variance (I360 − Calculated remaining)', value:Math.round(variance).toLocaleString()}
+  ], null);
+
+  if(result.hasUnknownFlow){
+    $('calcMissingNote').classList.remove('hidden');
+    $('calcMissingNote').innerHTML = '<b>Heads up:</b> at least one S2S sheet name didn\'t clearly say which direction it flows — use the "S2S sheet direction" buttons above to set it, then hit Calculate again.';
+  }
+}
+
+$('calcRunBtn').addEventListener('click', ()=>{
+  const item = $('calcItemInput').value.trim();
+  const store = $('calcStoreInput').value.trim();
+  if(!item || !store){ alert('Pick both an item code and a store first.'); return; }
+  state.calc = {
+    item, store,
+    i360: numOrZero($('calcI360Input').value),
+    physical: numOrZero($('calcPhysicalInput').value)
+  };
+  const result = computeCalculation(item, store);
+  state.calcResult = result;
+  renderCalcResults(result);
+});
+
+$('calcExportBtn').addEventListener('click', ()=>{
+  if(!state.calcResult){ alert('Run a calculation first.'); return; }
+  exportCalcExcel(state.calcResult);
+});
+
+function exportCalcExcel(result){
+  try{
+    if(typeof XLSX === 'undefined'){ throw new Error('Spreadsheet engine not available.'); }
+    const wsData = [];
+    const merges = [];
+    let row = 0; // 0-indexed row cursor, mirrors wsData
+    const addTitle = (text, span)=>{ wsData[row] = [text]; merges.push({s:{r:row,c:0}, e:{r:row,c:span-1}}); row++; };
+    const addRow = (vals)=>{ wsData[row] = vals.slice(); row++; };
+    const blank = ()=>{ row++; };
+    const R = (r)=> r+1; // 0-indexed row -> 1-indexed Excel row
+
+    const i360 = state.calc.i360 || 0;
+    const physical = state.calc.physical || 0;
+
+    addTitle('Calculation — ' + result.item + ' @ ' + result.store, 5);
+    addRow(['Generated', new Date().toLocaleString()]);
+    blank();
+
+    // ---- Total order received at store (MRS Inward) ----
+    addTitle('Total order received at store (MRS Inward)', 5);
+    addRow(['Month','MO/IR Number','Ordered Qnty','Inward Qnty','Circle']);
+    const inwardStart = row;
+    result.inwardRows.forEach(r=> addRow([r.month, r.moir, Math.round(r.ordered), Math.round(r.qty), r.circle]));
+    const inwardEnd = row - 1;
+    const inwardTotalRow = row;
+    addRow(['Total', '', result.inwardRows.reduce((a,r)=>a+r.ordered,0), result.totalInward, '']);
+    blank();
+
+    // ---- Total S2S inward — Other to SDFX ----
+    addTitle('Total S2S inward — Other to SDFX', 5);
+    addRow(['Month','MO/IR Number','Ordered Qnty','Inward Qnty','Circle']);
+    const s2sInStart = row;
+    result.s2sInRows.forEach(r=> addRow([r.month, r.moir, Math.round(r.ordered), Math.round(r.qty), r.circle]));
+    const s2sInEnd = row - 1;
+    const s2sInTotalRow = row;
+    addRow(['Total', '', result.s2sInRows.reduce((a,r)=>a+r.ordered,0), result.totalS2sIn, '']);
+    blank();
+
+    // ---- Total issuance to FE — by month ----
+    addTitle('Total issuance to FE — by month', 3);
+    addRow(['Month','Quantity','Circle']);
+    const issuanceStart = row;
+    result.issuanceRows.forEach(r=> addRow([r.month, Math.round(r.qty), r.circle]));
+    const issuanceEnd = row - 1;
+    const issuanceTotalRow = row;
+    addRow(['Total', result.totalIssuance, '']);
+    blank();
+
+    // ---- Total S2S outward — SDFX to Other ----
+    addTitle('Total S2S outward — SDFX to Other', 5);
+    addRow(['Month','MO/IR Number','Ordered Qnty','Outward Qnty','Circle']);
+    const s2sOutStart = row;
+    result.s2sOutRows.forEach(r=> addRow([r.month, r.moir, Math.round(r.ordered), Math.round(r.qty), r.circle]));
+    const s2sOutEnd = row - 1;
+    const s2sOutTotalRow = row;
+    addRow(['Total', '', result.s2sOutRows.reduce((a,r)=>a+r.ordered,0), result.totalS2sOut, '']);
+    blank();
+
+    // ---- Final stats — every value here is a live formula referencing
+    // the totals above (or the two manual entries), so opening the file
+    // and editing a line item recalculates the whole reconciliation.
+    addTitle('Final stats', 2);
+    addRow(['Metric','Value']);
+    const combinedInwardRow = row;   addRow(['Combined Inward (MRS Inward + S2S In)', result.combinedInward]);
+    const combinedIssuedRow = row;   addRow(['Combined Issued (FE Issuance + S2S Out)', result.combinedIssued]);
+    const remainingRow = row;        addRow(['Remaining stock (calculated)', result.remainingCalculated]);
+    const i360Row = row;             addRow(['Stock showing in I360 (manual entry)', i360]);
+    const physicalRow = row;         addRow(['Physical stock at store (manual entry)', physical]);
+    const gapRow = row;              addRow(['Total gap (I360 - Physical)', i360 - physical]);
+    const varianceRow = row;         addRow(['Variance (I360 - Calculated remaining)', i360 - result.remainingCalculated]);
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Overwrite the totals/final-stats cells with real formulas (value kept
+    // as a fallback for viewers that don't recalculate on open).
+    const setF = (addr, formula, value)=>{ ws[addr] = { t:'n', f:formula, v:value }; };
+    if(inwardEnd >= inwardStart){
+      setF('C'+R(inwardTotalRow), 'SUM(C'+R(inwardStart)+':C'+R(inwardEnd)+')', result.inwardRows.reduce((a,r)=>a+r.ordered,0));
+      setF('D'+R(inwardTotalRow), 'SUM(D'+R(inwardStart)+':D'+R(inwardEnd)+')', result.totalInward);
+    }
+    if(s2sInEnd >= s2sInStart){
+      setF('C'+R(s2sInTotalRow), 'SUM(C'+R(s2sInStart)+':C'+R(s2sInEnd)+')', result.s2sInRows.reduce((a,r)=>a+r.ordered,0));
+      setF('D'+R(s2sInTotalRow), 'SUM(D'+R(s2sInStart)+':D'+R(s2sInEnd)+')', result.totalS2sIn);
+    }
+    if(issuanceEnd >= issuanceStart){
+      setF('B'+R(issuanceTotalRow), 'SUM(B'+R(issuanceStart)+':B'+R(issuanceEnd)+')', result.totalIssuance);
+    }
+    if(s2sOutEnd >= s2sOutStart){
+      setF('C'+R(s2sOutTotalRow), 'SUM(C'+R(s2sOutStart)+':C'+R(s2sOutEnd)+')', result.s2sOutRows.reduce((a,r)=>a+r.ordered,0));
+      setF('D'+R(s2sOutTotalRow), 'SUM(D'+R(s2sOutStart)+':D'+R(s2sOutEnd)+')', result.totalS2sOut);
+    }
+    setF('B'+R(combinedInwardRow), 'D'+R(inwardTotalRow)+'+D'+R(s2sInTotalRow), result.combinedInward);
+    setF('B'+R(combinedIssuedRow), 'B'+R(issuanceTotalRow)+'+D'+R(s2sOutTotalRow), result.combinedIssued);
+    setF('B'+R(remainingRow), 'B'+R(combinedInwardRow)+'-B'+R(combinedIssuedRow), result.remainingCalculated);
+    setF('B'+R(gapRow), 'B'+R(i360Row)+'-B'+R(physicalRow), i360 - physical);
+    setF('B'+R(varianceRow), 'B'+R(i360Row)+'-B'+R(remainingRow), i360 - result.remainingCalculated);
+
+    ws['!merges'] = merges;
+    ws['!cols'] = [{wch:26},{wch:20},{wch:16},{wch:16},{wch:14}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Calculation');
+    const safeItem = String(result.item).replace(/[^a-z0-9]+/gi,'_');
+    const safeStore = String(result.store).replace(/[^a-z0-9]+/gi,'_');
+    XLSX.writeFile(wb, 'calculation_' + safeItem + '_' + safeStore + '.xlsx');
+  }catch(err){
+    alert('Could not build the calculation workbook: ' + (err && err.message ? err.message : err));
+  }
+}
 
 </script>
 </body>
